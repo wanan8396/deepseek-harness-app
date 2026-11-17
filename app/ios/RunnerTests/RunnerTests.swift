@@ -6,7 +6,7 @@ final class RunnerTests: XCTestCase {
   // This runs node_start inside the actual iOS Simulator application process.
   // It deliberately never treats a version/capability probe as a DSH boot.
   func testEmbeddedNodeExecutesInsideIOS() throws {
-    let root = Bundle.main
+    let root = Bundle(for: DshEmbeddedNode.self)
     let script = try XCTUnwrap(root.path(forResource: "probe", ofType: "cjs"))
     XCTAssertNotNil(root.path(forResource: "meta-probe", ofType: "mjs"))
     let output = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".json")

@@ -77,7 +77,8 @@ export async function runLoaderProbe(privateDir, bundleDir) {
       bad = await boot('dsh-ios-loader-bad-baseline', badConfig, [], undefined);
     } catch (error) {
       report.badBaselineRejected = error instanceof StartupError
-        && error.entries.some(({ entry }) => entry.options.id === 'agent-loop')
+        && error.entries.some(({ id, required, outcome }) => id === 'agent-loop'
+          && required === true && outcome.kind === 'failed')
         && containsExpectedFailure(error)
         && await markerMatches(join(negative, 'failure-entered.json'), challenge, 'failureEntered');
     }

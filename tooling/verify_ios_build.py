@@ -28,7 +28,7 @@ def main():
     assert not any(app.rglob('rootfs-*.tar.xz')), 'Linux rootfs entered the iOS bundle'
     root = Path(__file__).resolve().parents[1]
     for name in ['probe.cjs', 'meta-probe.mjs', 'requirements.json', 'NodeMobile-LICENSE.txt']:
-        assert (app / name).read_bytes() == (root / 'runtime/ios' / name).read_bytes(), name
+        assert (app / 'Frameworks/DshEmbeddedNode.framework' / name).read_bytes() == (root / 'runtime/ios' / name).read_bytes(), name
     bridge = app / 'Frameworks/DshEmbeddedNode.framework/DshEmbeddedNode'
     assert bridge.is_file(), 'Embedded runtime bridge framework missing'
     deps = subprocess.check_output(['otool', '-L', str(bridge)], text=True)
