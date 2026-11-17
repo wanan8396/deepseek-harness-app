@@ -328,6 +328,60 @@ class L10nZh extends L10n {
   String get iosLocalCheckFailed => '未通过';
 
   @override
+  String get iosLocalCheckNotRun => '未检测';
+
+  @override
+  String get iosLocalLoaderTitle => '官方 DSH Loader 验证';
+
+  @override
+  String get iosLocalLoaderDetail => '仅验证最小 Loader 的启动、服务、清理与错误基线，不代表完整本机引擎已就绪。';
+
+  @override
+  String get iosLocalLoaderBooted => 'Loader 已启动';
+
+  @override
+  String get iosLocalLoaderService => '服务已验证';
+
+  @override
+  String get iosLocalLoaderDispose => 'Loader 清理已验证';
+
+  @override
+  String get iosLocalLoaderBadBaseline => '错误启动基线已拦截';
+
+  @override
+  String get iosLocalCoreTitle => 'DSH 核心验证（离线）';
+
+  @override
+  String get iosLocalCoreDetail => '仅使用内存存储和固定离线测试模型；非真实模型提供者，不发起模型 API 调用。核心检查通过仍不代表完整本机引擎已就绪或可正式聊天。';
+
+  @override
+  String get iosLocalCoreBooted => '核心已启动';
+
+  @override
+  String get iosLocalCoreServices => '核心服务已验证';
+
+  @override
+  String get iosLocalCoreFirstTurn => '首轮流式消息已验证';
+
+  @override
+  String get iosLocalCoreSecondTurn => '第二轮历史已验证';
+
+  @override
+  String get iosLocalCoreCancellation => '取消后已收敛';
+
+  @override
+  String get iosLocalCoreError => '错误后已收敛';
+
+  @override
+  String get iosLocalCoreDispose => '核心清理已验证';
+
+  @override
+  String get iosLocalCoreBadBaseline => '核心错误启动基线已拦截';
+
+  @override
+  String get iosLocalCoreEphemeral => '仅内存存储';
+
+  @override
   String get iosLocalBackgroundObservation => '原生层上次读取时，应用处于后台。';
 
   @override

@@ -352,6 +352,62 @@ class L10nEn extends L10n {
   String get iosLocalCheckFailed => 'Not passed';
 
   @override
+  String get iosLocalCheckNotRun => 'Not checked';
+
+  @override
+  String get iosLocalLoaderTitle => 'Official DSH Loader validation';
+
+  @override
+  String get iosLocalLoaderDetail =>
+      'Checks only a minimal Loader’s boot, services, cleanup and failed baseline. This does not mean the full on-device engine is ready.';
+
+  @override
+  String get iosLocalLoaderBooted => 'Loader booted';
+
+  @override
+  String get iosLocalLoaderService => 'Service verified';
+
+  @override
+  String get iosLocalLoaderDispose => 'Loader cleanup verified';
+
+  @override
+  String get iosLocalLoaderBadBaseline => 'Failed boot baseline rejected';
+
+  @override
+  String get iosLocalCoreTitle => 'DSH core validation (offline)';
+
+  @override
+  String get iosLocalCoreDetail =>
+      'Uses only in-memory storage and a fixed offline test model, not a real model provider. No model API calls are made. Passing core checks still does not mean the full on-device engine is ready for real chat.';
+
+  @override
+  String get iosLocalCoreBooted => 'Core booted';
+
+  @override
+  String get iosLocalCoreServices => 'Core services verified';
+
+  @override
+  String get iosLocalCoreFirstTurn => 'First-turn streaming verified';
+
+  @override
+  String get iosLocalCoreSecondTurn => 'Second-turn history verified';
+
+  @override
+  String get iosLocalCoreCancellation => 'Cancellation settled';
+
+  @override
+  String get iosLocalCoreError => 'Error settled';
+
+  @override
+  String get iosLocalCoreDispose => 'Core cleanup verified';
+
+  @override
+  String get iosLocalCoreBadBaseline => 'Failed core boot baseline rejected';
+
+  @override
+  String get iosLocalCoreEphemeral => 'In-memory storage only';
+
+  @override
   String get iosLocalBackgroundObservation => 'The app was backgrounded when the native layer last read its status.';
 
   @override

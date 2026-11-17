@@ -704,6 +704,114 @@ abstract class L10n {
   /// **'未通过'**
   String get iosLocalCheckFailed;
 
+  /// No description provided for @iosLocalCheckNotRun.
+  ///
+  /// In zh, this message translates to:
+  /// **'未检测'**
+  String get iosLocalCheckNotRun;
+
+  /// No description provided for @iosLocalLoaderTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'官方 DSH Loader 验证'**
+  String get iosLocalLoaderTitle;
+
+  /// No description provided for @iosLocalLoaderDetail.
+  ///
+  /// In zh, this message translates to:
+  /// **'仅验证最小 Loader 的启动、服务、清理与错误基线，不代表完整本机引擎已就绪。'**
+  String get iosLocalLoaderDetail;
+
+  /// No description provided for @iosLocalLoaderBooted.
+  ///
+  /// In zh, this message translates to:
+  /// **'Loader 已启动'**
+  String get iosLocalLoaderBooted;
+
+  /// No description provided for @iosLocalLoaderService.
+  ///
+  /// In zh, this message translates to:
+  /// **'服务已验证'**
+  String get iosLocalLoaderService;
+
+  /// No description provided for @iosLocalLoaderDispose.
+  ///
+  /// In zh, this message translates to:
+  /// **'Loader 清理已验证'**
+  String get iosLocalLoaderDispose;
+
+  /// No description provided for @iosLocalLoaderBadBaseline.
+  ///
+  /// In zh, this message translates to:
+  /// **'错误启动基线已拦截'**
+  String get iosLocalLoaderBadBaseline;
+
+  /// No description provided for @iosLocalCoreTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'DSH 核心验证（离线）'**
+  String get iosLocalCoreTitle;
+
+  /// No description provided for @iosLocalCoreDetail.
+  ///
+  /// In zh, this message translates to:
+  /// **'仅使用内存存储和固定离线测试模型；非真实模型提供者，不发起模型 API 调用。核心检查通过仍不代表完整本机引擎已就绪或可正式聊天。'**
+  String get iosLocalCoreDetail;
+
+  /// No description provided for @iosLocalCoreBooted.
+  ///
+  /// In zh, this message translates to:
+  /// **'核心已启动'**
+  String get iosLocalCoreBooted;
+
+  /// No description provided for @iosLocalCoreServices.
+  ///
+  /// In zh, this message translates to:
+  /// **'核心服务已验证'**
+  String get iosLocalCoreServices;
+
+  /// No description provided for @iosLocalCoreFirstTurn.
+  ///
+  /// In zh, this message translates to:
+  /// **'首轮流式消息已验证'**
+  String get iosLocalCoreFirstTurn;
+
+  /// No description provided for @iosLocalCoreSecondTurn.
+  ///
+  /// In zh, this message translates to:
+  /// **'第二轮历史已验证'**
+  String get iosLocalCoreSecondTurn;
+
+  /// No description provided for @iosLocalCoreCancellation.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消后已收敛'**
+  String get iosLocalCoreCancellation;
+
+  /// No description provided for @iosLocalCoreError.
+  ///
+  /// In zh, this message translates to:
+  /// **'错误后已收敛'**
+  String get iosLocalCoreError;
+
+  /// No description provided for @iosLocalCoreDispose.
+  ///
+  /// In zh, this message translates to:
+  /// **'核心清理已验证'**
+  String get iosLocalCoreDispose;
+
+  /// No description provided for @iosLocalCoreBadBaseline.
+  ///
+  /// In zh, this message translates to:
+  /// **'核心错误启动基线已拦截'**
+  String get iosLocalCoreBadBaseline;
+
+  /// No description provided for @iosLocalCoreEphemeral.
+  ///
+  /// In zh, this message translates to:
+  /// **'仅内存存储'**
+  String get iosLocalCoreEphemeral;
+
   /// No description provided for @iosLocalBackgroundObservation.
   ///
   /// In zh, this message translates to:
