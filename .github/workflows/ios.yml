@@ -55,6 +55,8 @@ jobs:
             curl -fL --retry 3 -o "$RUNNER_TEMP/test-fonts/NotoSansCJK-$weight.ttc" "https://raw.githubusercontent.com/notofonts/noto-cjk/Sans2.004/Sans/OTC/NotoSansCJK-$weight.ttc"
           done
       - name: Test iOS channel, readiness and platform isolation
+        id: widget-tests
+        continue-on-error: true
         working-directory: app
         env:
           DSH_TEST_FONT_DIR: ${{ runner.temp }}/test-fonts
@@ -79,6 +81,11 @@ jobs:
           python3 tooling/verify_ios_build.py app/build/ios/iphoneos/Runner.app --output dist/ios/device-verification.json
           printf 'source=%s\ntarget=iPhone,iPad\nDSH_BOOT_VERIFIED=false\nSIGNING=none\n' "$GITHUB_SHA" > dist/ios/build-info.txt
           tar -czf dist/ios/unsigned-iphone-ipad-app.tar.gz -C app/build/ios/iphoneos Runner.app
+      - name: Enforce widget regression result after independent iOS builds
+        if: always() && steps.widget-tests.outcome != 'success'
+        run: |
+          echo 'Widget regressions failed; build evidence does not override that result.'
+          exit 1
       - name: Preserve cloud-generated localization sources
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9

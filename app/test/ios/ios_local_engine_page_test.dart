@@ -94,11 +94,25 @@ void main() {
     messenger.setMockMethodCallHandler(_channel, null);
   });
 
+  test('starting status survives the native method codec and strict parser', () {
+    final raw = const StandardMethodCodec().decodeEnvelope(
+      const StandardMethodCodec().encodeSuccessEnvelope(_status(state: 'starting')),
+    );
+    final status = IosLocalProbeStatus.fromMap(raw);
+    expect(status.state, IosProbeState.starting);
+    expect(status.reason, isNull);
+    expect(status.compatible, isFalse);
+  });
+
   _testIosWidgets('reads native status and starts only an explicit local probe', (tester) async {
-    final started = Completer<Object?>();
+    final started = Completer<Map<String, Object?>>();
     messenger.setMockMethodCallHandler(_channel, (call) async {
       calls.add(call);
-      return call.method == 'startProbe' ? started.future : _status();
+      if (call.method == 'startProbe') {
+        final reply = await started.future;
+        return reply;
+      }
+      return _status();
     });
     await _mount(tester);
     expect(calls.map((call) => call.method), ['getStatus']);
@@ -113,7 +127,11 @@ void main() {
     await _frames(tester);
     final statusLabel = find.byKey(const ValueKey('ios-local-status'));
     await tester.ensureVisible(statusLabel);
-    expect(tester.widget<Text>(statusLabel).data, '正在运行本地探针');
+    expect(
+      tester.widget<Text>(statusLabel).data,
+      '正在运行本地探针',
+      reason: tester.widget<Text>(find.byKey(const ValueKey('ios-local-detail'))).data,
+    );
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(seconds: 1));
     expect(calls, hasLength(2));
