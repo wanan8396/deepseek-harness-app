@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io' show Platform;
 
+import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -13,6 +14,7 @@ import '../../state/notify_state.dart';
 import '../../state/onboarding_state.dart';
 import '../../state/settings_state.dart';
 import '../../state/web_connection_state.dart';
+import '../ios/ios_local_engine_page.dart';
 import '../onboarding/onboarding_flow.dart';
 import '../onboarding/setup_progress.dart';
 import '../settings/connect_computer_page.dart';
@@ -65,6 +67,11 @@ class _RootGateState extends ConsumerState<RootGate> {
 
   @override
   Widget build(BuildContext context) {
+    // iOS probes its embedded runtime before restoring any Android or computer
+    // destination. A Node smoke test is not the installed/running DSH engine.
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
+      return widget.home ?? const IosLocalEnginePage();
+    }
     final connection = ref.watch(webConnectionProvider);
     if (!connection.loaded) return const _Splash();
     if (connection.mode == WebConnectionMode.computer) {
