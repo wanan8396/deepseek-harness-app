@@ -1,6 +1,6 @@
 'use strict';
 
-// Node and optional official Loader probe; neither claims a DSH profile is ready.
+// Node, Loader and optional in-memory AgentLoop checks; none claims a user-ready DSH profile.
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
@@ -82,7 +82,7 @@ async function collectReport(reportPath) {
     reportCompatible: gate.runtimeCompatible,
     probeReady: true,
     engineReady: false,
-    scope: 'embedded-node-and-loader-only-not-dsh-profile',
+    scope: 'embedded-node-loader-and-ephemeral-core-not-user-profile',
     engine: requirements.engine,
     requiredNode: requirements.engine.node,
     versions: { node: process.versions.node, mobile: process.versions.mobile ?? null,
@@ -113,6 +113,18 @@ async function main(reportPath) {
       } catch {
         report.loader = { dshLoaderBooted: false, serviceVerified: false, disposeVerified: false,
           badBaselineRejected: false, engineReady: false, stage: 'import', errorCode: 'IOS_DSH_LOADER_PROBE_FAILED' };
+      }
+    }
+    const coreRoot = path.join(__dirname, 'dsh-core');
+    if (fs.existsSync(coreRoot)) {
+      try {
+        const { runCoreProbe } = await import(pathToFileURL(path.join(coreRoot, 'core-probe.mjs')).href);
+        report.core = await runCoreProbe(path.dirname(reportPath), coreRoot);
+      } catch {
+        report.core = { coreBooted: false, servicesVerified: false, firstTurnStreamed: false,
+          secondTurnHistoryVerified: false, cancellationSettled: false, errorSettled: false,
+          disposeVerified: false, ephemeral: true, engineReady: false,
+          stage: 'import', errorCode: 'IOS_DSH_CORE_PROBE_FAILED' };
       }
     }
     atomicReport(reportPath, report);

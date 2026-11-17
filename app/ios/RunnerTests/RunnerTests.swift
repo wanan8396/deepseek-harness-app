@@ -45,6 +45,14 @@ final class RunnerTests: XCTestCase {
     }
     XCTAssertEqual(loader["engineReady"] as? Bool, false)
     XCTAssertEqual(loader["stage"] as? String, "complete")
+    let core = try XCTUnwrap(value["core"] as? [String: Any])
+    for key in ["coreBooted", "servicesVerified", "firstTurnStreamed", "secondTurnHistoryVerified",
+                "cancellationSettled", "errorSettled", "disposeVerified", "badBaselineRejected"] {
+      XCTAssertEqual(core[key] as? Bool, true, "DSH core gate failed: \(key), stage=\(core["stage"] ?? "unknown")")
+    }
+    XCTAssertEqual(core["ephemeral"] as? Bool, true)
+    XCTAssertEqual(core["engineReady"] as? Bool, false)
+    XCTAssertEqual(core["stage"] as? String, "complete")
     // A second call must not initialize another V8 runtime in this process.
     XCTAssertFalse(DshEmbeddedNode.startProbe(atPath: script, reportPath: output.path) { _ in })
   }
