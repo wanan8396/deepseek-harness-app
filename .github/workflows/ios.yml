@@ -9,6 +9,28 @@ concurrency:
   group: ios-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  loader:
+    name: DSH Loader source and desktop prerequisites
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24.22.1'
+      - name: Test exporter without executing supplier packages
+        run: python3 -m unittest discover -s tooling -p test_prepare_ios_loader.py -v
+      - name: Resolve exact official dependency lock into isolated seed
+        run: |
+          mkdir -p "$RUNNER_TEMP/dsh-ios-seed"
+          cp runtime/locks/dsh-0.2.2-rc.3/package*.json "$RUNNER_TEMP/dsh-ios-seed/"
+          npm ci --prefix "$RUNNER_TEMP/dsh-ios-seed" --ignore-scripts --omit=optional --no-audit --no-fund
+      - name: Export reviewed pure-JS Loader composition
+        run: python3 tooling/prepare_ios_loader.py --seed "$RUNNER_TEMP/dsh-ios-seed" --output "$RUNNER_TEMP/dsh-ios-loader"
+      - name: Exercise real DSH Loader and bad-baseline rejection
+        run: node runtime/ios/test-loader.mjs "$RUNNER_TEMP/dsh-ios-loader"
   ios:
     name: iPhone and iPad embedded runtime
     runs-on: macos-15
