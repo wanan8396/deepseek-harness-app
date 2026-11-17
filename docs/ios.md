@@ -6,13 +6,15 @@
 
 ## 当前阶段
 
-当前实现 iOS 工程、嵌入式 Node 框架、真实 JavaScript 能力探针及官方 DSH Loader 的最小加载验证。**探针通过不等于 DSH 引擎已启动；当前尚未提供完整的 iOS 本机 DSH 对话功能。**
+当前实现 iOS 工程、嵌入式 Node 框架、真实 JavaScript 能力探针、官方 DSH Loader 的最小加载验证，以及真实 AgentLoop 的离线内存会话检查。**探针通过不等于完整 DSH 引擎已启动；当前尚未提供完整的 iOS 本机 DSH 对话功能。**
 
 - Xcode Runner 同时面向 iPhone、iPad，最低 iOS 16。
 - Node 在 App 自己的线程内通过 `node_start()` 运行，不解包 Ubuntu，不执行 Linux 二进制，不使用 Root、PRoot 或外部电脑。
 - iOS 首屏进入本机能力检查，不恢复电脑地址，不调用 Android 运行时安装流程。
 - 启动后检测私有目录读写、ICU/Intl、内置模块加载、SQLite/FTS5、ESM 元信息；显示实际版本和结果。
 - 将官方锁中的 Loader 纯 JS 闭包与独立测试插件打包；验证真实服务激活、私有文件 challenge、dispose 和错误启动拦截，结果独立于 Node 能力记录。这个最小树没有挂载 Agent、模型或对话界面。
+- 独立内核树挂载官方 Session、投影、Prompt、Tools、LLM、Agent 与 AgentLoop；仅外部模型端点由明确标识的离线夹具替代。检查真实流式 delta、第二轮历史、取消、模型错误后的恢复、清理与缺失服务坏基线；不发真实模型请求，不挂载持久化，不作为用户聊天入口。
+- 界面分别展示 Node、Loader 与内核结果；没有报告、失败和通过各自显示，不根据 Node 兼容性掩盖内核失败。
 - `engineReady` 仍为 false；缺失框架、超时或错误返回明确失败状态，不伪造运行网址或登录令牌。
 - iOS 切后台后受系统挂起约束；目前不声明持续后台执行。
 
@@ -30,7 +32,7 @@
 
 1. 校验依赖锁与运行时哈希。
 2. 在 GitHub 上生成中英文文案，执行 Python/Node/Flutter 回归。
-3. Ubuntu 先执行官方 Loader 与错误基线，传递同一次运行的受审资源包给 Xcode；在 iOS Simulator App 进程内执行 Node 与 Loader 的独立 XCTest 断言。
+3. Ubuntu 先执行官方 Loader、真实内存 AgentLoop 与各自错误基线，传递同一次运行的两个受审资源包给 Xcode；在 iOS Simulator App 进程内执行 Node、Loader 与 AgentLoop 的独立 XCTest 断言。
 4. 构建未签名的 iPhone/iPad Release App；检查 Mach-O 平台、设备类型、框架和探针资源。
 5. 保存构建核验、XCTest 结果与未签名设备 App。
 

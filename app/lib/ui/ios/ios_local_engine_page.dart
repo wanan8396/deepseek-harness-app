@@ -20,6 +20,8 @@ class IosLocalProbeStatus {
     this.nodeVersion,
     this.reason,
     this.capabilities = const {},
+    this.loaderChecks,
+    this.coreChecks,
     this.appBackgrounded = false,
   });
 
@@ -35,6 +37,33 @@ class IosLocalProbeStatus {
     'importMetaFilename',
     'importMetaDirname',
   ];
+
+  static const loaderCheckKeys = [
+    'dshLoaderBooted',
+    'serviceVerified',
+    'disposeVerified',
+    'badBaselineRejected',
+  ];
+  static const coreCheckKeys = [
+    'coreBooted',
+    'servicesVerified',
+    'firstTurnStreamed',
+    'secondTurnHistoryVerified',
+    'cancellationSettled',
+    'errorSettled',
+    'disposeVerified',
+    'ephemeral',
+  ];
+
+  static Map<String, bool?>? _checks(Object? raw, List<String> keys, {bool requireEphemeral = false}) {
+    if (raw == null) return null;
+    if (raw is! Map || raw['engineReady'] != false || (requireEphemeral && raw['ephemeral'] != true)) {
+      throw const FormatException('invalid iOS validation report');
+    }
+    return {
+      for (final key in keys) key: raw[key] is bool ? raw[key] as bool : null,
+    };
+  }
 
   /// Deliberately excludes endpoints, tokens, paths and arbitrary probe output.
   factory IosLocalProbeStatus.fromMap(Object? raw) {
@@ -84,6 +113,8 @@ class IosLocalProbeStatus {
           for (final key in capabilityKeys)
             if (capabilities[key] case final bool value) key: value,
       },
+      loaderChecks: _checks(report is Map ? report['loader'] : null, loaderCheckKeys),
+      coreChecks: _checks(report is Map ? report['core'] : null, coreCheckKeys, requireEphemeral: true),
       appBackgrounded: raw['appBackgrounded'] as bool,
     );
   }
@@ -93,6 +124,8 @@ class IosLocalProbeStatus {
   final String? nodeVersion;
   final IosProbeReason? reason;
   final Map<String, bool> capabilities;
+  final Map<String, bool?>? loaderChecks;
+  final Map<String, bool?>? coreChecks;
   final bool appBackgrounded;
 }
 
@@ -199,6 +232,74 @@ class _IosLocalEnginePageState extends State<IosLocalEnginePage> {
     'importMetaDirname' => l10n.iosLocalCapabilityImportDirname,
     _ => throw ArgumentError.value(key),
   };
+
+  String _validationText(L10n l10n, String group, String key) => switch ((group, key)) {
+    ('loader', 'dshLoaderBooted') => l10n.iosLocalLoaderBooted,
+    ('loader', 'serviceVerified') => l10n.iosLocalLoaderService,
+    ('loader', 'disposeVerified') => l10n.iosLocalLoaderDispose,
+    ('loader', 'badBaselineRejected') => l10n.iosLocalLoaderBadBaseline,
+    ('core', 'coreBooted') => l10n.iosLocalCoreBooted,
+    ('core', 'servicesVerified') => l10n.iosLocalCoreServices,
+    ('core', 'firstTurnStreamed') => l10n.iosLocalCoreFirstTurn,
+    ('core', 'secondTurnHistoryVerified') => l10n.iosLocalCoreSecondTurn,
+    ('core', 'cancellationSettled') => l10n.iosLocalCoreCancellation,
+    ('core', 'errorSettled') => l10n.iosLocalCoreError,
+    ('core', 'disposeVerified') => l10n.iosLocalCoreDispose,
+    ('core', 'ephemeral') => l10n.iosLocalCoreEphemeral,
+    _ => throw ArgumentError.value(key),
+  };
+
+  Widget _validationSection(
+    L10n l10n, {
+    required String group,
+    required String title,
+    required String detail,
+    required Map<String, bool?> checks,
+  }) {
+    final theme = Theme.of(context);
+    return Column(
+      key: ValueKey('ios-local-$group-section'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Divider(height: 32),
+        Text(title, style: theme.textTheme.titleSmall),
+        const SizedBox(height: 6),
+        Text(detail),
+        const SizedBox(height: 12),
+        for (final entry in checks.entries)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  switch (entry.value) {
+                    true => AppIcons.done,
+                    false => AppIcons.attention,
+                    null => AppIcons.engine,
+                  },
+                  size: 18,
+                ),
+                const SizedBox(width: 8),
+                Expanded(child: Text(_validationText(l10n, group, entry.key))),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    switch (entry.value) {
+                      true => l10n.iosLocalCheckPassed,
+                      false => l10n.iosLocalCheckFailed,
+                      null => l10n.iosLocalCheckNotRun,
+                    },
+                    key: ValueKey('ios-local-$group-${entry.key}'),
+                    textAlign: TextAlign.end,
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -328,7 +429,23 @@ class _IosLocalEnginePageState extends State<IosLocalEnginePage> {
                               ),
                             ),
                         ],
-                        if (status?.appBackgrounded == true) ...[
+                        if (status?.loaderChecks != null)
+                           _validationSection(
+                             l10n,
+                             group: 'loader',
+                             title: l10n.iosLocalLoaderTitle,
+                             detail: l10n.iosLocalLoaderDetail,
+                             checks: status!.loaderChecks!,
+                           ),
+                         if (status?.coreChecks != null)
+                           _validationSection(
+                             l10n,
+                             group: 'core',
+                             title: l10n.iosLocalCoreTitle,
+                             detail: l10n.iosLocalCoreDetail,
+                             checks: status!.coreChecks!,
+                           ),
+                         if (status?.appBackgrounded == true) ...[
                           const SizedBox(height: 12),
                           Text(l10n.iosLocalBackgroundObservation),
                         ],

@@ -43,6 +43,14 @@ python3 tooling/prepare_ios_runtime.py --download
 
 Ubuntu 先执行 [test-loader.mjs](test-loader.mjs)；通过后将同一次运行的归档传给 iOS job，放入 `DshEmbeddedNode.framework/dsh-loader`。嵌入探针随后运行同一 `runLoaderProbe()`，XCTest 独立要求激活、服务、清理、坏基线四项为真。`runtimeCompatible` 仍只描述 Node API，Loader 结果放在独立 `loader` 字段；两层 `engineReady` 都保持 false。安装产物校验逐一比对 Loader 文件哈希和官方锁哈希。
 
+## 真实 AgentLoop 的独立内存会话检查
+
+`prepare_ios_loader.py --phase core` 用同一官方锁导出另一份闭包，标记 `ios-adapted-core-probe`。官方包源码不做字节修改；App 自有 [core-probe.mjs](core-probe.mjs) 和 [core-fixture-model.mjs](core-fixture-model.mjs) 分别承担测试驱动和离线模型端点。模型夹具不是正式模型提供者，也没有 API 调用或凭据。
+
+九行树挂载官方投影、Session、Prompt、Tools、JS 工具执行管线、LLM、Agent、AgentLoop 加自有模型。先由 [test-core.mjs](test-core.mjs) 在 Actions 桌面 Node 下验证，再将同一次运行的资源放入 `DshEmbeddedNode.framework/dsh-core`，由实际 iOS 进程执行相同驱动。XCTest 分别要求服务活性、真实 delta 与提交、连续两轮的模型输入历史、取消后的 idle 和中断提交、模型失败及下一轮恢复、清理、必需 Prompt 缺失的拒绝基线。
+
+报告位于独立 `core` 字段；`ephemeral: true`、`modelKind: offline-fixture`、`engineReady: false` 固定区分测试能力与完整用户功能。没有挂载持久化，App 重启后没有会话恢复；没有正式聊天界面或完整无 TCP 请求通道。界面只按白名单展示检查结果，不显示私有路径、challenge 或任意异常。
+
 ## DSH 启动门禁仍待闭环
 
 1. 当前官方 DSH rc.3 锁要求 `>=24.9.0`。Node24.22.1 满足版本门槛，不等于整图兼容。

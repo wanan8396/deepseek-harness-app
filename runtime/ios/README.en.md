@@ -43,6 +43,14 @@ Observed checks: Node/V8/ABI/N-API/platform/arch, the version floor, private-dir
 
 Ubuntu first runs [test-loader.mjs](test-loader.mjs). Only a passing same-run archive reaches the iOS job, under `DshEmbeddedNode.framework/dsh-loader`. The embedded probe then runs the same `runLoaderProbe()`. XCTest independently requires activation, service, disposal and bad-baseline rejection. `runtimeCompatible` still describes Node APIs only; Loader observations appear in a separate `loader` field and both `engineReady` fields remain false. Artifact verification checks every Loader file hash and the official lock hash.
 
+## Independent in-memory sessions with the actual AgentLoop
+
+`prepare_ios_loader.py --phase core` exports a second closure from the same official lock, labeled `ios-adapted-core-probe`. Supplier package bytes remain unchanged. App-owned [core-probe.mjs](core-probe.mjs) and [core-fixture-model.mjs](core-fixture-model.mjs) provide the test driver and offline model endpoint respectively. This fixture is not a live model provider and uses no API calls or credentials.
+
+The nine-row tree mounts actual projections, Session, Prompt, Tools, the JS tool pipeline, LLM, Agent and AgentLoop plus the App-owned model. Actions first runs [test-core.mjs](test-core.mjs) on desktop Node. Only the same-run tested bundle reaches `DshEmbeddedNode.framework/dsh-core`, where the actual iOS process executes the same driver. XCTest separately requires live services, real deltas and settlement, second-turn request history, idle state and interrupted settlement after cancellation, model failure followed by a recovered turn, disposal, and a missing-required-Prompt rejection baseline.
+
+Observations live in the separate `core` field. `ephemeral: true`, `modelKind: offline-fixture` and `engineReady: false` distinguish test capability from complete user functionality. No persistence is mounted and sessions do not survive restart. There is no finished chat UI or full zero-TCP request transport. The interface renders only whitelisted checks, not private paths, challenges or arbitrary errors.
+
 ## DSH gates still open
 
 1. The official DSH rc.3 lock requires `>=24.9.0`. Node24.22.1 clears the version gate, not the whole dependency graph.

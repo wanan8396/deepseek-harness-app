@@ -22,6 +22,21 @@ async function bounded(promise, milliseconds = 8000) {
   } finally { clearTimeout(timer); }
 }
 
+async function bootBounded(boot, ...args) {
+  let abandoned = false;
+  const pending = boot(...args);
+  // Promise.race does not cancel boot. Dispose a root that arrives after this
+  // caller has timed out; the application must never retain an orphan Loader.
+  void pending.then(async (context) => {
+    if (abandoned) {
+      try { await context.fiber.dispose(); }
+      catch { console.error('IOS_CORE_LATE_DISPOSE_FAILED'); }
+    }
+  }, () => {});
+  try { return await bounded(pending); }
+  catch (error) { abandoned = true; throw error; }
+}
+
 /** Executes supplier AgentLoop logic with only the external model replaced by a
  * deterministic offline adapter. It deliberately mounts no persistence backend. */
 export async function runCoreProbe(privateDir, bundleDir) {
@@ -59,7 +74,7 @@ export async function runCoreProbe(privateDir, bundleDir) {
     const configPath = join(work, 'cordis.json');
     await writeFile(configPath, JSON.stringify(rows), { flag: 'wx', mode: 0o600 });
     report.stage = 'boot';
-    ctx = await bounded(boot('dsh-ios-core', configPath, [], undefined));
+    ctx = await bootBounded(boot, 'dsh-ios-core', configPath, [], undefined);
     const tree = ctx.get('loader')?.resolve('include')?.subtree;
     report.coreBooted = ctx.fiber.state === 2 && rows.every(({ id }) => tree?.resolve(id)?.fiber?.state === 2);
     if (!report.coreBooted) throw new Error('IOS_CORE_PLUGIN_INACTIVE');
@@ -142,7 +157,7 @@ export async function runCoreProbe(privateDir, bundleDir) {
     report.stage = 'negative';
     const badPath = join(work, 'missing-system-prompt.json');
     await writeFile(badPath, JSON.stringify(rows.filter(({ id }) => id !== 'system-prompt')), { flag: 'wx', mode: 0o600 });
-    try { bad = await bounded(boot('dsh-ios-core-bad-baseline', badPath, [], undefined)); }
+    try { bad = await bootBounded(boot, 'dsh-ios-core-bad-baseline', badPath, [], undefined); }
     catch (error) {
       report.badBaselineRejected = error instanceof StartupError && error.entries.some(({ id, required, outcome }) =>
         id === 'agent-loop' && required === true && outcome.kind === 'pending' && outcome.missing.includes('systemPrompt'));
