@@ -11,10 +11,11 @@ concurrency:
 jobs:
   ios:
     name: iPhone and iPad embedded runtime
-    runs-on: macos-26
+    runs-on: macos-15
     timeout-minutes: 50
     env:
       FLUTTER_VERSION: 3.47.7
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
       TZ: Asia/Shanghai
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
