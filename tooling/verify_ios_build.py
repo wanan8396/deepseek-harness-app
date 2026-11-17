@@ -29,6 +29,16 @@ def main():
     root = Path(__file__).resolve().parents[1]
     for name in ['probe.cjs', 'meta-probe.mjs', 'requirements.json', 'NodeMobile-LICENSE.txt']:
         assert (app / 'Frameworks/DshEmbeddedNode.framework' / name).read_bytes() == (root / 'runtime/ios' / name).read_bytes(), name
+    loader = app / 'Frameworks/DshEmbeddedNode.framework/dsh-loader'
+    manifest = json.loads((loader / 'distribution-manifest.json').read_text())
+    assert manifest['distribution'] == 'ios-adapted-loader-probe'
+    assert manifest['engineVersion'] == '0.2.2-rc.3' and manifest['engineReady'] is False
+    lock = root / 'runtime/locks/dsh-0.2.2-rc.3/package-lock.json'
+    assert manifest['sourceLockSHA256'] == hashlib.sha256(lock.read_bytes()).hexdigest()
+    for entry in manifest['files']:
+        relative = Path(entry['path'])
+        assert not relative.is_absolute() and '..' not in relative.parts
+        assert hashlib.sha256((loader / relative).read_bytes()).hexdigest() == entry['sha256']
     bridge = app / 'Frameworks/DshEmbeddedNode.framework/DshEmbeddedNode'
     assert bridge.is_file(), 'Embedded runtime bridge framework missing'
     deps = subprocess.check_output(['otool', '-L', str(bridge)], text=True)

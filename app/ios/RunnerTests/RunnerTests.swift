@@ -39,6 +39,12 @@ final class RunnerTests: XCTestCase {
                 "importMetaMain", "importMetaFilename", "importMetaDirname"] {
       XCTAssertEqual(capabilities[key] as? Bool, true, "Required API failed: \(key)")
     }
+    let loader = try XCTUnwrap(value["loader"] as? [String: Any])
+    for key in ["dshLoaderBooted", "serviceVerified", "disposeVerified", "badBaselineRejected"] {
+      XCTAssertEqual(loader[key] as? Bool, true, "DSH Loader gate failed: \(key), stage=\(loader["stage"] ?? "unknown")")
+    }
+    XCTAssertEqual(loader["engineReady"] as? Bool, false)
+    XCTAssertEqual(loader["stage"] as? String, "complete")
     // A second call must not initialize another V8 runtime in this process.
     XCTAssertFalse(DshEmbeddedNode.startProbe(atPath: script, reportPath: output.path) { _ in })
   }

@@ -6,12 +6,13 @@ This branch targets iOS phones and tablets, not a macOS desktop app. Android sta
 
 ## Current stage
 
-Stage one adds the iOS project, an embedded Node framework, and a real JavaScript capability probe. **A successful probe is not a DSH engine boot. Full on-device DSH conversations on iOS are not implemented yet.**
+The current stage adds the iOS project, an embedded Node framework, a real JavaScript capability probe and a minimal official DSH Loader lifecycle check. **A successful probe is not a DSH engine boot. Full on-device DSH conversations on iOS are not implemented yet.**
 
 - Runner targets both iPhone and iPad, minimum iOS 16.
 - `node_start()` runs inside an application-owned thread. It does not unpack Ubuntu, execute Linux binaries, use Root/PRoot, or depend on an external computer.
 - The iOS landing page checks local capabilities. It does not restore a computer destination or invoke Android runtime installation.
 - The probe checks private-directory read/write, ICU/Intl, builtin module loading, SQLite/FTS5 and ESM metadata, reporting actual versions and results.
+- A reviewed pure-JS Loader closure from the official lock plus an App-owned test plugin verifies actual service activation, a private-file challenge, disposal and rejected startup. These checks are separate from Node capabilities. This minimal tree does not mount an Agent, model or conversation UI.
 - `engineReady` remains false. Missing resources, timeouts and invalid responses are explicit failures, not fabricated URLs or login tokens.
 - iOS may suspend background applications. Continuous background execution is not claimed.
 
@@ -29,7 +30,7 @@ The [iOS workflow](../.github/workflows/ios.yml) runs on branch pushes and manua
 
 1. Verify dependency requirements and runtime integrity.
 2. Generate bilingual localization and run Python, Node and Flutter regressions on GitHub.
-3. Build an iOS Simulator application, then use XCTest to execute embedded Node inside the simulator application process.
+3. Exercise the official Loader and a rejected baseline on Ubuntu, pass that same run's reviewed bundle to Xcode, and assert Node and Loader checks independently inside the iOS Simulator application process.
 4. Build an unsigned iPhone/iPad Release application and verify its platform, device families, framework and probe resources.
 5. Preserve build verification, XCTest results and the unsigned device application.
 
@@ -39,7 +40,7 @@ The macOS runner supplies Xcode; the product target remains iOS. An unsigned app
 
 The probe is not a finished chat product. Remaining work includes:
 
-- An iOS-compatible `node-addon-require-builtin` and internal ESM/CJS access used by `dsh-app-boot`; a macOS arm64 addon is not an iOS arm64 addon.
+- Full profile resolution still needs separately adapted internal ESM/CJS access and `node-addon-require-builtin`. The relative-module Loader check does not mount that path or replace it with a fake shim. A macOS arm64 addon is not an iOS arm64 addon.
 - App-sandbox storage for sessions/workspaces, and compatible filesystem, image and native-extension dependencies.
 - Replacing or disabling plugins that require subprocesses, terminals, OS shells or dynamic tool installation, with an explicit supported feature inventory.
 - Independently verifying profile startup, authentication, web/API transport, streamed conversations, approvals, persistence and background/foreground lifecycle.

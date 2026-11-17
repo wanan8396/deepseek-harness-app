@@ -37,9 +37,15 @@ python3 tooling/prepare_ios_runtime.py --download
 
 实际检查：Node/V8/ABI/N-API/platform/arch、版本约束、私有目录写读、`process.getBuiltinModule`、`node:sqlite` 内存读写及 FTS5、Intl、真实本地 ESM `import.meta.main/filename/dirname`。jitless 的 argv 请求、配方预期与未独立证明的运行时状态分开记录。
 
+## 官方 Loader 的独立检查
+
+`prepare_ios_loader.py` 从 Actions 用官方 rc.3 锁重新解析的独立 npm seed 导出受审纯 JS 闭包，拒绝未知依赖扩展和 npm 原生二进制，记录来源、遗漏原因、许可和逐文件哈希。供应包保持原字节；自有测试插件分开标记为 `ios-adapted-loader-probe`。
+
+Ubuntu 先执行 [test-loader.mjs](test-loader.mjs)；通过后将同一次运行的归档传给 iOS job，放入 `DshEmbeddedNode.framework/dsh-loader`。嵌入探针随后运行同一 `runLoaderProbe()`，XCTest 独立要求激活、服务、清理、坏基线四项为真。`runtimeCompatible` 仍只描述 Node API，Loader 结果放在独立 `loader` 字段；两层 `engineReady` 都保持 false。安装产物校验逐一比对 Loader 文件哈希和官方锁哈希。
+
 ## DSH 启动门禁仍待闭环
 
 1. 当前官方 DSH rc.3 锁要求 `>=24.9.0`。Node24.22.1 满足版本门槛，不等于整图兼容。
 2. `dsh-app-boot` 的 profile resolution 直接依赖 `node-addon-require-builtin` 和五个内部 loader 模块；Linux ARM64/glibc 或 Mac darwin-arm64 addon 不等于 iOS addon。
-3. CLI 与 `runProfile` 内含宿主进程退出路径；直接调用会影响整个 App。下一轮先用 `dsh-app-boot.boot(...)` 与相对模块 tiny profile 验证真实 Loader，再实现受控的 App profile 生命周期。
+3. CLI 与 `runProfile` 内含宿主进程退出路径；直接调用会影响整个 App。当前以 `dsh-app-boot.boot(...)` 和相对模块 tiny tree 验证真实 Loader 的激活、challenge、dispose 与必需 row 失败拦截；仍未实现用户 profile 的完整受控生命周期。
 4. 全 web profile、HTTP/RPC、真实会话持久化、模型请求、原生工具、后台/锁屏/内存压力/真机都各自记录证据。没有“复用百分比”或“几个原生模块足够”的结论。

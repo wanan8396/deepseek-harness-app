@@ -6,12 +6,13 @@
 
 ## 当前阶段
 
-第一阶段实现 iOS 工程、嵌入式 Node 框架与真实 JavaScript 能力探针。**探针通过不等于 DSH 引擎已启动；当前尚未提供完整的 iOS 本机 DSH 对话功能。**
+当前实现 iOS 工程、嵌入式 Node 框架、真实 JavaScript 能力探针及官方 DSH Loader 的最小加载验证。**探针通过不等于 DSH 引擎已启动；当前尚未提供完整的 iOS 本机 DSH 对话功能。**
 
 - Xcode Runner 同时面向 iPhone、iPad，最低 iOS 16。
 - Node 在 App 自己的线程内通过 `node_start()` 运行，不解包 Ubuntu，不执行 Linux 二进制，不使用 Root、PRoot 或外部电脑。
 - iOS 首屏进入本机能力检查，不恢复电脑地址，不调用 Android 运行时安装流程。
 - 启动后检测私有目录读写、ICU/Intl、内置模块加载、SQLite/FTS5、ESM 元信息；显示实际版本和结果。
+- 将官方锁中的 Loader 纯 JS 闭包与独立测试插件打包；验证真实服务激活、私有文件 challenge、dispose 和错误启动拦截，结果独立于 Node 能力记录。这个最小树没有挂载 Agent、模型或对话界面。
 - `engineReady` 仍为 false；缺失框架、超时或错误返回明确失败状态，不伪造运行网址或登录令牌。
 - iOS 切后台后受系统挂起约束；目前不声明持续后台执行。
 
@@ -29,7 +30,7 @@
 
 1. 校验依赖锁与运行时哈希。
 2. 在 GitHub 上生成中英文文案，执行 Python/Node/Flutter 回归。
-3. 构建真正的 iOS Simulator App，在模拟器进程内执行嵌入 Node 的 XCTest。
+3. Ubuntu 先执行官方 Loader 与错误基线，传递同一次运行的受审资源包给 Xcode；在 iOS Simulator App 进程内执行 Node 与 Loader 的独立 XCTest 断言。
 4. 构建未签名的 iPhone/iPad Release App；检查 Mach-O 平台、设备类型、框架和探针资源。
 5. 保存构建核验、XCTest 结果与未签名设备 App。
 
@@ -39,7 +40,7 @@ macOS runner 仅是 Xcode 构建环境，产物目标仍为 iOS。未签名 App 
 
 目前不把探针当作聊天产品交付，下一阶段还要逐项验证：
 
-- `dsh-app-boot` 使用的 `node-addon-require-builtin` 及其内部 ESM/CJS 模块入口，需要 iOS 兼容实现；Mac arm64 的原生模块不是 iOS arm64 模块。
+- 完整 profile resolution 使用的 `node-addon-require-builtin` 与内部 ESM/CJS 入口仍需单独适配；最小相对模块 Loader 检查没有挂载该路径，也没有以假 shim 替代它。Mac arm64 原生模块不是 iOS arm64 模块。
 - 将会话和工作区映射到 App 沙箱目录；迁移或替换文件系统、图像和原生扩展依赖。
 - 替代或禁用依赖子进程、终端、系统 Shell、动态工具安装的插件，明确真实功能范围。
 - DSH profile 实际启动、认证握手、网页/API、会话流式消息、审批、持久化及前后台生命周期分别验收。

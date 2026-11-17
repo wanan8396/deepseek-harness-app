@@ -1,6 +1,6 @@
 'use strict';
 
-// Node-only smoke probe. This file never imports DSH or claims DSH readiness.
+// Node and optional official Loader probe; neither claims a DSH profile is ready.
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
@@ -82,7 +82,7 @@ async function collectReport(reportPath) {
     reportCompatible: gate.runtimeCompatible,
     probeReady: true,
     engineReady: false,
-    scope: 'embedded-node-only-not-dsh-startup',
+    scope: 'embedded-node-and-loader-only-not-dsh-profile',
     engine: requirements.engine,
     requiredNode: requirements.engine.node,
     versions: { node: process.versions.node, mobile: process.versions.mobile ?? null,
@@ -104,7 +104,18 @@ async function main(reportPath) {
   setInterval(() => {}, 60_000);
   try {
     if (!reportPath || !path.isAbsolute(reportPath)) throw new Error('REPORT_PATH_INVALID');
-    atomicReport(reportPath, await collectReport(reportPath));
+    const report = await collectReport(reportPath);
+    const loaderRoot = path.join(__dirname, 'dsh-loader');
+    if (fs.existsSync(loaderRoot)) {
+      try {
+        const { runLoaderProbe } = await import(pathToFileURL(path.join(loaderRoot, 'loader-probe.mjs')).href);
+        report.loader = await runLoaderProbe(path.dirname(reportPath), loaderRoot);
+      } catch {
+        report.loader = { dshLoaderBooted: false, serviceVerified: false, disposeVerified: false,
+          badBaselineRejected: false, engineReady: false, stage: 'import', errorCode: 'IOS_DSH_LOADER_PROBE_FAILED' };
+      }
+    }
+    atomicReport(reportPath, report);
   } catch {
     // Machine-only message: never serialize error messages, paths, tokens or argv.
     try { atomicReport(reportPath, { schemaVersion: 1, phase: 'probeFailed', probeReady: false,

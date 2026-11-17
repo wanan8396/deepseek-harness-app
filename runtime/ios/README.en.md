@@ -37,9 +37,15 @@ The probe writes a random same-directory temporary file (0600), then publishes c
 
 Observed checks: Node/V8/ABI/N-API/platform/arch, the version floor, private-directory file round-trip, `process.getBuiltinModule`, in-memory `node:sqlite` and FTS5, Intl, and actual local ESM `import.meta.main/filename/dirname`. Requested jitless arguments, recipe expectations, and runtime state not independently proven are recorded separately.
 
+## Independent official Loader checks
+
+`prepare_ios_loader.py` exports a reviewed pure-JS closure from a fresh isolated npm seed resolved by Actions using the official rc.3 lock. It rejects unreviewed dependency expansion and native npm binaries, recording provenance, omissions, licenses and per-file hashes. Supplier bytes stay unchanged; the App-owned test plugin is separately labeled `ios-adapted-loader-probe`.
+
+Ubuntu first runs [test-loader.mjs](test-loader.mjs). Only a passing same-run archive reaches the iOS job, under `DshEmbeddedNode.framework/dsh-loader`. The embedded probe then runs the same `runLoaderProbe()`. XCTest independently requires activation, service, disposal and bad-baseline rejection. `runtimeCompatible` still describes Node APIs only; Loader observations appear in a separate `loader` field and both `engineReady` fields remain false. Artifact verification checks every Loader file hash and the official lock hash.
+
 ## DSH gates still open
 
 1. The official DSH rc.3 lock requires `>=24.9.0`. Node24.22.1 clears the version gate, not the whole dependency graph.
 2. Profile resolution in `dsh-app-boot` directly depends on `node-addon-require-builtin` and five internal loader modules. A Linux ARM64/glibc or Mac darwin-arm64 addon is not an iOS addon.
-3. The CLI and `runProfile` contain host-process exit paths. Calling them directly affects the entire App. Next, validate the actual Loader using `dsh-app-boot.boot(...)` and a relative-module tiny profile, then implement an App-owned controlled profile lifecycle.
+3. The CLI and `runProfile` contain host-process exit paths. Calling them directly affects the entire App. The current relative-module tiny tree uses `dsh-app-boot.boot(...)` to verify real Loader activation, a private challenge, disposal and rejected required-row startup. A complete controlled user-profile lifecycle remains unimplemented.
 4. The full web profile, HTTP/RPC, actual session persistence, model calls, native tools, background/lock/memory-pressure handling, and physical devices each require separate evidence. There is no established reuse percentage or small fixed native-module count.
