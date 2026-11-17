@@ -22,7 +22,7 @@ async function bounded(promise, milliseconds = 8000) {
   } finally { clearTimeout(timer); }
 }
 
-async function bootBounded(boot, ...args) {
+export async function bootBounded(boot, ...args) {
   let abandoned = false;
   const pending = boot(...args);
   // Promise.race does not cancel boot. Dispose a root that arrives after this

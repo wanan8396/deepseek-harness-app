@@ -9,7 +9,7 @@ import { pathToFileURL } from 'node:url';
 const bundle = resolve(process.argv[2]);
 const directory = await mkdtemp(join(tmpdir(), 'dsh-ios-core-desktop-'));
 try {
-  const { runCoreProbe } = await import(pathToFileURL(join(bundle, 'core-probe.mjs')).href);
+  const { runCoreProbe, bootBounded } = await import(pathToFileURL(join(bundle, 'core-probe.mjs')).href);
   const report = await runCoreProbe(directory, bundle);
   console.log(JSON.stringify({ environment: 'desktop-node-not-ios', ...report }));
   for (const key of ['coreBooted', 'servicesVerified', 'firstTurnStreamed', 'secondTurnHistoryVerified',
@@ -25,4 +25,17 @@ try {
   assert.equal(bad.coreBooted, false);
   assert.equal(bad.engineReady, false);
   assert.notEqual(bad.errorCode, null);
+  // Ownership-only regression: a boot that resolves after its deadline must
+  // release the late root, independently of AgentLoop's positive smoke test.
+  const late = Promise.withResolvers();
+  const disposed = Promise.withResolvers();
+  await assert.rejects(bootBounded(() => late.promise), /IOS_CORE_TIMEOUT/);
+  late.resolve({ fiber: { dispose: async () => disposed.resolve() } });
+  let deadline;
+  try {
+    await Promise.race([disposed.promise, new Promise((_, reject) => {
+      deadline = setTimeout(() => reject(new Error('Late Loader was not disposed')), 500);
+    })]);
+  } finally { clearTimeout(deadline); }
+  console.log('IOS_CORE_LATE_BOOT_DISPOSAL_VERIFIED');
 } finally { await rm(directory, { recursive: true, force: true }); }

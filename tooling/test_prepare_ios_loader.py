@@ -182,6 +182,58 @@ class PrepareIOSLoaderTests(unittest.TestCase):
         with self.assertRaisesRegex(exporter.ExportError, 'PACKAGE_ENTRY_TARGET_INVALID'):
             exporter.validate_entry_targets({'main': '../escape.js'}, files)
 
+    def test_missing_export_diagnostics_are_public_and_bounded(self):
+        for target, code in (('./lib/*.js', 'RUNTIME_EXPORT_TARGET_MISSING'),
+                             ('./lib/index.js', 'RUNTIME_ENTRY_TARGET_MISSING')):
+            with self.subTest(target=target):
+                with self.assertRaises(exporter.ExportError) as failure:
+                    exporter.validate_entry_targets({'name': 'fixture-package', 'exports': {'.': target}}, set())
+                self.assertEqual(str(failure.exception), code)
+                self.assertEqual(failure.exception.public_details, {'package': 'fixture-package', 'target': target})
+                output = io.StringIO()
+                with patch.object(exporter, 'prepare', side_effect=failure.exception), contextlib.redirect_stdout(output):
+                    self.assertEqual(exporter.main(['--seed', '/private/seed']), 1)
+                self.assertEqual(json.loads(output.getvalue()), {'errorCode': code, 'engineReady': False,
+                                                               'package': 'fixture-package', 'target': target})
+                self.assertNotIn('/private/seed', output.getvalue())
+        for package, target in (('x' * 215, './' + 'x' * 257),
+                                ('private/path', '/private/source.js'),
+                                ('fixture-package', '../private.js'),
+                                ('fixture-package', 'C:\\private\\source.js')):
+            details = exporter.ExportError('FIXTURE_ERROR', package=package, target=target).public_details
+            self.assertNotIn('target', details)
+            if package != 'fixture-package':
+                self.assertNotIn('package', details)
+
+    def test_only_reviewed_zod_development_condition_is_omitted(self):
+        manifest = {'name': 'zod', 'version': '4.6.6', 'exports': {
+            './v4/locales/*': {'@zod/source': './src/v4/locales/*', 'types': './v4/locales/*.d.ts',
+                              'import': './v4/locales/*.js', 'require': './v4/locales/*.cjs'},
+            '.': {'node': './lib/node.js', 'default': './lib/default.js'},
+        }}
+        files = {'v4/locales/en.js', 'v4/locales/en.cjs', 'lib/node.js', 'lib/default.js'}
+        original = copy.deepcopy(manifest)
+        omitted = exporter.validate_entry_targets(manifest, files)
+        self.assertEqual(manifest, original)
+        self.assertEqual(len(omitted), 1)
+        self.assertEqual(omitted[0]['package'], 'zod')
+        self.assertEqual(omitted[0]['condition'], '@zod/source')
+        self.assertEqual(omitted[0]['targets'], ['./src/v4/locales/*'])
+        for filename in files:
+            with self.subTest(filename=filename), self.assertRaises(exporter.ExportError):
+                exporter.validate_entry_targets(manifest, files - {filename})
+        for name, version in (('fixture-zod', '4.6.6'), ('zod', '4.6.5')):
+            other = {**manifest, 'name': name, 'version': version}
+            with self.subTest(name=name, version=version), self.assertRaisesRegex(exporter.ExportError, 'RUNTIME_EXPORT_TARGET_MISSING'):
+                exporter.validate_entry_targets(other, files)
+        other = copy.deepcopy(manifest)
+        other['exports']['./v4/locales/*']['@fixture/source'] = other['exports']['./v4/locales/*'].pop('@zod/source')
+        with self.assertRaisesRegex(exporter.ExportError, 'RUNTIME_EXPORT_TARGET_MISSING'):
+            exporter.validate_entry_targets(other, files)
+        with self.assertRaisesRegex(exporter.ExportError, 'RUNTIME_EXPORT_TARGET_MISSING'):
+            exporter.validate_entry_targets({'name': 'zod', 'version': '4.6.6',
+                                            'exports': {'./locale/*.json': './locale/*.json'}}, files)
+
     def test_file_manifest_tracks_bytes_licenses_and_omissions(self):
         with tempfile.TemporaryDirectory() as temporary:
             seed = Path(temporary)
@@ -204,6 +256,20 @@ class PrepareIOSLoaderTests(unittest.TestCase):
             seed.mkdir()
             lock = {'packages': {}}
             add_core_seed(seed, lock)
+            zod = seed / 'node_modules/zod'
+            zod_manifest = json.loads((zod / 'package.json').read_text())
+            zod_manifest['exports'] = {
+                '.': {'@zod/source': './src/index.ts', 'default': './index.js'},
+                './v4/locales/*': {'@zod/source': './src/v4/locales/*',
+                                  'import': './v4/locales/*.js', 'require': './v4/locales/*.cjs'},
+            }
+            zod_bytes = json.dumps(zod_manifest).encode()
+            (zod / 'package.json').write_bytes(zod_bytes)
+            (zod / 'v4/locales').mkdir(parents=True)
+            (zod / 'v4/locales/en.js').write_text('export {};\n')
+            (zod / 'v4/locales/en.cjs').write_text('module.exports = {};\n')
+            (zod / 'src/v4/locales').mkdir(parents=True)
+            (zod / 'src/v4/locales/en.ts').write_text('export {};\n')
             lock_bytes = json.dumps(lock).encode()
             (seed / 'package-lock.json').write_bytes(lock_bytes)
             lock_path = directory / 'lock.json'
@@ -222,6 +288,14 @@ class PrepareIOSLoaderTests(unittest.TestCase):
             self.assertEqual(manifest['phase'], 'core')
             self.assertFalse(manifest['engineReady'])
             self.assertEqual(manifest['sourceLockSHA256'], exporter.sha256(lock_bytes))
+            self.assertEqual(len(manifest['omittedExports']), 1)
+            self.assertEqual(manifest['omittedExports'][0]['package'], 'zod')
+            self.assertEqual(manifest['omittedExports'][0]['condition'], '@zod/source')
+            self.assertEqual(manifest['omittedExports'][0]['targets'], ['./src/index.ts', './src/v4/locales/*'])
+            self.assertEqual((output / 'node_modules/zod/package.json').read_bytes(), zod_bytes)
+            self.assertTrue((output / 'node_modules/zod/v4/locales/en.js').is_file())
+            self.assertTrue((output / 'node_modules/zod/v4/locales/en.cjs').is_file())
+            self.assertFalse((output / 'node_modules/zod/src/v4/locales/en.ts').exists())
             self.assertEqual(set(manifest['entryPackages']), {
                 '@deepseek-ai/dsh-app-boot', '@deepseek-ai/dsh-session-projection',
                 '@deepseek-ai/dsh-session', '@deepseek-ai/dsh-system-prompt',

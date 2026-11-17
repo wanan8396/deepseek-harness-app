@@ -52,6 +52,7 @@ class IosLocalProbeStatus {
     'cancellationSettled',
     'errorSettled',
     'disposeVerified',
+    'badBaselineRejected',
     'ephemeral',
   ];
 
@@ -245,6 +246,7 @@ class _IosLocalEnginePageState extends State<IosLocalEnginePage> {
     ('core', 'cancellationSettled') => l10n.iosLocalCoreCancellation,
     ('core', 'errorSettled') => l10n.iosLocalCoreError,
     ('core', 'disposeVerified') => l10n.iosLocalCoreDispose,
+    ('core', 'badBaselineRejected') => l10n.iosLocalCoreBadBaseline,
     ('core', 'ephemeral') => l10n.iosLocalCoreEphemeral,
     _ => throw ArgumentError.value(key),
   };

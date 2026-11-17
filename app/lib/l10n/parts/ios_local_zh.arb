@@ -50,6 +50,7 @@
   "iosLocalCoreCancellation": "取消后已收敛",
   "iosLocalCoreError": "错误后已收敛",
   "iosLocalCoreDispose": "核心清理已验证",
+  "iosLocalCoreBadBaseline": "核心错误启动基线已拦截",
   "iosLocalCoreEphemeral": "仅内存存储",
   "iosLocalBackgroundObservation": "原生层上次读取时，应用处于后台。",
   "iosLocalBackgroundLimit": "后台暂停与系统终止后需重新确认本机状态；探针不承诺持续后台运行。",

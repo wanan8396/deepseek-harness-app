@@ -67,7 +67,18 @@ NATIVE_MAGIC = {b'\x7fELF', b'\xfe\xed\xfa\xce', b'\xce\xfa\xed\xfe',
 
 
 class ExportError(ValueError):
-    """A deterministic contract failure; its code contains no private data."""
+    """A deterministic code, optionally with bounded public npm export details."""
+
+    def __init__(self, code: str, *, package: str | None = None, target: str | None = None):
+        super().__init__(code)
+        self.public_details = {}
+        if (isinstance(package, str) and len(package) <= 214
+                and re.fullmatch(r'(?:@[a-zA-Z0-9_.-]+/)?[a-zA-Z0-9_.-]+', package)):
+            self.public_details['package'] = package
+        if (isinstance(target, str) and len(target) <= 256
+                and re.fullmatch(r'[a-zA-Z0-9_./@*+-]+', target)
+                and not PurePosixPath(target).is_absolute() and '..' not in PurePosixPath(target).parts):
+            self.public_details['target'] = target
 
 
 def sha256(data: bytes) -> str:
@@ -150,24 +161,44 @@ def is_runtime_file(relative: Path) -> bool:
             or name.startswith(('license', 'licence', 'copying', 'notice', 'readme')))
 
 
-def runtime_targets(value, condition=None):
+def reviewed_development_exports(manifest: dict) -> list:
+    # zod 4.6.6 declares ./src/v4/locales/* without a .ts suffix under its
+    # development-only condition. Node is not launched with @zod/source.
+    if manifest.get('name') != 'zod' or manifest.get('version') != '4.6.6':
+        return []
+    exports = manifest.get('exports', {})
+    if not isinstance(exports, dict):
+        return []
+    targets = [value['@zod/source'] for value in exports.values()
+               if isinstance(value, dict) and '@zod/source' in value]
+    if not targets or any(not isinstance(target, str) or not target.startswith('./src/')
+                          or len(target) > 256 or not re.fullmatch(r'[a-zA-Z0-9_./@*+-]+', target)
+                          or '..' in PurePosixPath(target).parts for target in targets):
+        return []
+    return [{'package': 'zod', 'condition': '@zod/source', 'targets': sorted(set(targets)),
+             'reason': 'official development-source condition is not selected by Node; source files omitted, no synthesized files'}]
+
+
+def runtime_targets(value, condition=None, skipped_conditions=frozenset()):
     if isinstance(value, str):
         if condition != 'types' and not value.endswith(('.ts', '.cts', '.mts')):
             yield value
     elif isinstance(value, list):
         for child in value:
-            yield from runtime_targets(child, condition)
+            yield from runtime_targets(child, condition, skipped_conditions)
     elif isinstance(value, dict):
         for key, child in value.items():
-            if key == 'types' or key.startswith('./src/') or key == 'standard-schema-spec':
+            if key == 'types' or key.startswith('./src/') or key == 'standard-schema-spec' or key in skipped_conditions:
                 continue
-            yield from runtime_targets(child, key)
+            yield from runtime_targets(child, key, skipped_conditions)
 
 
-def validate_entry_targets(manifest: dict, kept: set[str]) -> None:
-    # Types and source-only exports are not executable Node targets. Do not
-    # modify package.json to hide their deliberate development-source omission.
-    targets = list(runtime_targets(manifest.get('exports', {})))
+def validate_entry_targets(manifest: dict, kept: set[str]) -> list:
+    # Types and reviewed development conditions are not executable Node targets.
+    # Keep package.json's complete exports unchanged in the supplier output.
+    omitted = reviewed_development_exports(manifest)
+    skipped = frozenset(entry['condition'] for entry in omitted)
+    targets = list(runtime_targets(manifest.get('exports', {}), skipped_conditions=skipped))
     for key in ('main', 'module'):
         target = manifest.get(key)
         if isinstance(target, str):
@@ -182,12 +213,13 @@ def validate_entry_targets(manifest: dict, kept: set[str]) -> None:
         if '*' in clean:
             pattern = re.compile('^' + re.escape(clean).replace(r'\*', '.*') + '$')
             if not any(pattern.match(filename) for filename in kept):
-                raise ExportError('RUNTIME_EXPORT_TARGET_MISSING')
+                raise ExportError('RUNTIME_EXPORT_TARGET_MISSING', package=manifest.get('name'), target=target)
         elif not any(candidate in kept for candidate in (clean, clean + '.js', clean + '.json', clean + '/index.js')):
-            raise ExportError('RUNTIME_ENTRY_TARGET_MISSING')
+            raise ExportError('RUNTIME_ENTRY_TARGET_MISSING', package=manifest.get('name'), target=target)
+    return omitted
 
 
-def collect_files(seed: Path, selected: dict) -> tuple[list, list]:
+def collect_files(seed: Path, selected: dict, omitted_exports: list | None = None) -> tuple[list, list]:
     files = []
     omitted_files = []
     for relative_name, (locked, manifest) in sorted(selected.items()):
@@ -221,7 +253,9 @@ def collect_files(seed: Path, selected: dict) -> tuple[list, list]:
                                           'reason': 'non-runtime-source-map-type-or-development-resource'})
         if not has_license:
             raise ExportError('PACKAGE_LICENSE_MISSING')
-        validate_entry_targets(manifest, kept)
+        omitted = validate_entry_targets(manifest, kept)
+        if omitted_exports is not None:
+            omitted_exports.extend(omitted)
     return files, omitted_files
 
 
@@ -235,7 +269,8 @@ def prepare(seed: Path, destination: Path, check: bool = False, phase: str = 'lo
     if lock['packages']['node_modules/@deepseek-ai/dsh-app-boot']['version'] != '0.2.2-rc.3':
         raise ExportError('ENGINE_VERSION_MISMATCH')
     selected, omitted = dependency_closure(seed, lock, phase)
-    files, omitted_files = collect_files(seed, selected)
+    omitted_exports = []
+    files, omitted_files = collect_files(seed, selected, omitted_exports)
     own_names = ('core-probe.mjs', 'core-fixture-model.mjs') if phase == 'core' else ('loader-probe.mjs', 'loader-fixture.mjs')
     own_files = [ROOT / 'runtime/ios' / name for name in own_names]
     for source in own_files:
@@ -271,6 +306,7 @@ def prepare(seed: Path, destination: Path, check: bool = False, phase: str = 'lo
     if phase == 'core':
         manifest['phase'] = phase
         manifest['entryPackages'] = list(entries)
+        manifest['omittedExports'] = omitted_exports
     if check:
         return manifest
     if destination.exists() or destination.is_symlink():
@@ -308,7 +344,8 @@ def main(argv=None) -> int:
         return 0
     except (ExportError, OSError, ValueError, KeyError) as error:
         code = str(error) if isinstance(error, ExportError) else 'IOS_LOADER_EXPORT_FAILED'
-        print(json.dumps({'errorCode': code, 'engineReady': False}))
+        details = error.public_details if isinstance(error, ExportError) else {}
+        print(json.dumps({'errorCode': code, 'engineReady': False, **details}))
         return 1
 
 

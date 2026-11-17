@@ -123,7 +123,8 @@ async function main(reportPath) {
       } catch {
         report.core = { coreBooted: false, servicesVerified: false, firstTurnStreamed: false,
           secondTurnHistoryVerified: false, cancellationSettled: false, errorSettled: false,
-          disposeVerified: false, ephemeral: true, engineReady: false,
+          disposeVerified: false, badBaselineRejected: false, ephemeral: true,
+          modelKind: 'offline-fixture', engineReady: false,
           stage: 'import', errorCode: 'IOS_DSH_CORE_PROBE_FAILED' };
       }
     }

@@ -32,6 +32,7 @@ const _corePassed = <String, Object?>{
   'cancellationSettled': true,
   'errorSettled': true,
   'disposeVerified': true,
+  'badBaselineRejected': true,
   'ephemeral': true,
   'engineReady': false,
 };
@@ -166,6 +167,7 @@ void main() {
       'cancellationSettled': null,
       'errorSettled': null,
       'disposeVerified': null,
+      'badBaselineRejected': false,
       'ephemeral': true,
     });
     expect(status.compatible, isFalse);
@@ -308,6 +310,7 @@ void main() {
       'ios-local-core-cancellationSettled': '未检测',
       'ios-local-core-errorSettled': '未检测',
       'ios-local-core-disposeVerified': '未检测',
+      'ios-local-core-badBaselineRejected': '未检测',
       'ios-local-core-ephemeral': '通过',
     };
     for (final entry in expected.entries) {
@@ -368,6 +371,33 @@ void main() {
     expect(tester.widget<Text>(find.byKey(const ValueKey('ios-local-core-firstTurnStreamed'))).data, '未通过');
     expect(tester.widget<Text>(find.byKey(const ValueKey('ios-local-core-errorSettled'))).data, '未通过');
     expect(find.byKey(const ValueKey('ios-local-dsh-not-started')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  _testIosWidgets('a failed core bad baseline remains visible after the other core checks pass', (tester) async {
+    messenger.setMockMethodCallHandler(_channel, (_) async => _status(
+      state: 'probeReady',
+      nodeVersion: '24.22.1',
+      compatible: true,
+      report: {
+        'loader': _loaderPassed,
+        'core': {..._corePassed, 'badBaselineRejected': false, 'stage': 'negative'},
+      },
+    ));
+    await _mount(tester);
+    for (final key in [
+      'coreBooted', 'servicesVerified', 'firstTurnStreamed', 'secondTurnHistoryVerified',
+      'cancellationSettled', 'errorSettled', 'disposeVerified',
+    ]) {
+      expect(tester.widget<Text>(find.byKey(ValueKey('ios-local-core-$key'))).data, '通过');
+    }
+    expect(find.text('核心错误启动基线已拦截'), findsOneWidget);
+    expect(tester.widget<Text>(find.byKey(const ValueKey('ios-local-core-badBaselineRejected'))).data, '未通过');
+    expect(tester.widget<Text>(find.byKey(const ValueKey('ios-local-loader-badBaselineRejected'))).data, '通过');
+    expect(find.text('DSH 本机引擎未启动'), findsOneWidget);
+    expect(find.byKey(const ValueKey('ios-local-engine-page')), findsOneWidget);
+    expect(find.byType(TextField), findsNothing);
+    expect(tester.widget<FilledButton>(find.byKey(_start)).onPressed, isNull);
     expect(tester.takeException(), isNull);
   });
 
