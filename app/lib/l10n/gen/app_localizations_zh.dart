@@ -226,6 +226,120 @@ class L10nZh extends L10n {
   String get fileSharedText => '分享的文字.txt';
 
   @override
+  String get iosLocalTitle => 'iPhone / iPad 本机引擎';
+
+  @override
+  String get iosLocalScope => '直接检查此设备内嵌的 Node.js；不连接电脑或远程引擎。';
+
+  @override
+  String get iosLocalChecking => '正在读取本机状态';
+
+  @override
+  String get iosLocalProbeIdle => '本地探针尚未运行';
+
+  @override
+  String get iosLocalProbeIdleDetail => '运行探针，验证此应用内嵌 Node.js 的实际执行能力。';
+
+  @override
+  String get iosLocalProbeRunning => '正在运行本地探针';
+
+  @override
+  String get iosLocalProbeRunningDetail => '由 iOS 原生层运行内嵌 Node.js，并读取本次执行的检测结果。';
+
+  @override
+  String get iosLocalProbePassed => '内嵌 Node.js 探针已完成';
+
+  @override
+  String get iosLocalProbeCompatible => 'Node.js 版本与已检测能力符合当前要求。DSH 引擎适配仍在验证，尚未启动。';
+
+  @override
+  String get iosLocalProbeUnavailable => '本地探针尚未就绪';
+
+  @override
+  String get iosLocalNodeVersionMismatch => '当前内嵌 Node.js 版本未满足 DSH 要求；需先更新原生运行时。';
+
+  @override
+  String get iosLocalCapabilitiesMissing => '当前内嵌 Node.js 的检测能力尚未满足 DSH 要求。';
+
+  @override
+  String get iosLocalProbeTimeout => '读取或运行探针已超时。可刷新状态查看原生层的实际结果。';
+
+  @override
+  String get iosLocalProbeFailed => '本地探针执行失败。刷新状态后查看本次原生检测结果。';
+
+  @override
+  String get iosLocalRuntimeUnavailable => '此安装包的本机运行时状态不可用。刷新可重试读取；此处不会替换为远程引擎。';
+
+  @override
+  String iosLocalNodeVersion(String version) {
+    return '实际 Node.js：$version';
+  }
+
+  @override
+  String iosLocalRequiredNode(String range) {
+    return 'DSH 所需 Node.js：$range';
+  }
+
+  @override
+  String iosLocalDshVersion(String version) {
+    return '目标 DSH：$version';
+  }
+
+  @override
+  String get iosLocalNotDetected => '尚未检测';
+
+  @override
+  String get iosLocalDshNotStarted => 'DSH 本机引擎未启动';
+
+  @override
+  String get iosLocalProbeOnly => '探针通过仅证明内嵌 Node.js 已实际执行，不代表 DSH 已安装、已启动或网页已就绪。';
+
+  @override
+  String get iosLocalCapabilitiesTitle => '本次原生能力检测';
+
+  @override
+  String get iosLocalCapabilityFileSystem => '应用内文件读写';
+
+  @override
+  String get iosLocalCapabilityIntl => 'Intl 国际化';
+
+  @override
+  String get iosLocalCapabilityBuiltinModule => 'Node 内置模块访问';
+
+  @override
+  String get iosLocalCapabilitySqlite => 'Node 内置 SQLite';
+
+  @override
+  String get iosLocalCapabilitySqliteFts => 'SQLite FTS5 全文检索';
+
+  @override
+  String get iosLocalCapabilityImportMain => 'ES 模块入口检测';
+
+  @override
+  String get iosLocalCapabilityImportFilename => 'ES 模块文件名';
+
+  @override
+  String get iosLocalCapabilityImportDirname => 'ES 模块目录名';
+
+  @override
+  String get iosLocalCheckPassed => '通过';
+
+  @override
+  String get iosLocalCheckFailed => '未通过';
+
+  @override
+  String get iosLocalBackgroundObservation => '原生层上次读取时，应用处于后台。';
+
+  @override
+  String get iosLocalBackgroundLimit => '后台暂停与系统终止后需重新确认本机状态；探针不承诺持续后台运行。';
+
+  @override
+  String get iosLocalRunProbe => '运行本地探针';
+
+  @override
+  String get iosLocalRefresh => '刷新状态';
+
+  @override
   String localEnvThisPhoneDetail(int storage, int memory) {
     return '存储约 $storage MB · 内存约 $memory MB';
   }

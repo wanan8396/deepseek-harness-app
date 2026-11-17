@@ -21,7 +21,7 @@ The checked-in `@deepseek-ai/dsh@0.2.2-rc.3` lock requires Node `>=24.9.0`. The 
 
 [requirements.json](../runtime/ios/requirements.json) records the exact URL, size, SHA-256 and source/recipe commits. Preparation verifies the archive before inspecting extraction paths, framework slices and the entry API. Framework binaries remain in an ignored Vendor directory, outside Git. The probe writes only to its supplied private report path.
 
-This is a third-party mobile port, not an Apple or official Node.js iOS distribution. Pinning and probe success do not verify all DSH modules. The framework's Node and third-party notices are preserved; see its [LICENSE](https://github.com/fogtape/nodejs-mobile/blob/b5bcc8d8e70f055333cd5efc317e3eb55bf0c9a5/LICENSE).
+This is a third-party mobile port, not an Apple or official Node.js iOS distribution. Pinning and probe success do not verify all DSH modules. The framework's complete Node and third-party notices are pinned in [NodeMobile-LICENSE.txt](../runtime/ios/NodeMobile-LICENSE.txt) and bundled with the App; sourced from its [LICENSE](https://github.com/fogtape/nodejs-mobile/blob/b5bcc8d8e70f055333cd5efc317e3eb55bf0c9a5/LICENSE).
 
 ## Build directly on GitHub
 

@@ -242,6 +242,129 @@ class L10nEn extends L10n {
   String get fileSharedText => 'Shared text.txt';
 
   @override
+  String get iosLocalTitle => 'On-device engine for iPhone / iPad';
+
+  @override
+  String get iosLocalScope =>
+      'Checks Node.js embedded in this device directly, without connecting to a computer or remote engine.';
+
+  @override
+  String get iosLocalChecking => 'Reading on-device status';
+
+  @override
+  String get iosLocalProbeIdle => 'Local probe has not run';
+
+  @override
+  String get iosLocalProbeIdleDetail => 'Run the probe to verify that Node.js embedded in this app actually executes.';
+
+  @override
+  String get iosLocalProbeRunning => 'Running the local probe';
+
+  @override
+  String get iosLocalProbeRunningDetail =>
+      'The iOS native layer runs embedded Node.js and reads the result of this execution.';
+
+  @override
+  String get iosLocalProbePassed => 'Embedded Node.js probe completed';
+
+  @override
+  String get iosLocalProbeCompatible =>
+      'The Node.js version and checked capabilities meet the current requirements. DSH engine integration is still being verified and has not started.';
+
+  @override
+  String get iosLocalProbeUnavailable => 'Local probe is not ready';
+
+  @override
+  String get iosLocalNodeVersionMismatch =>
+      'The embedded Node.js version does not meet DSH requirements. Update the native runtime first.';
+
+  @override
+  String get iosLocalCapabilitiesMissing =>
+      'The checked capabilities of embedded Node.js do not yet meet DSH requirements.';
+
+  @override
+  String get iosLocalProbeTimeout =>
+      'Reading or running the probe timed out. Refresh to read the native layer’s actual result.';
+
+  @override
+  String get iosLocalProbeFailed => 'The local probe failed. Refresh to read the result of this native check.';
+
+  @override
+  String get iosLocalRuntimeUnavailable =>
+      'On-device runtime status is unavailable in this installation. Refresh to retry; no remote engine will replace it here.';
+
+  @override
+  String iosLocalNodeVersion(String version) {
+    return 'Actual Node.js: $version';
+  }
+
+  @override
+  String iosLocalRequiredNode(String range) {
+    return 'Node.js required by DSH: $range';
+  }
+
+  @override
+  String iosLocalDshVersion(String version) {
+    return 'Target DSH: $version';
+  }
+
+  @override
+  String get iosLocalNotDetected => 'Not checked yet';
+
+  @override
+  String get iosLocalDshNotStarted => 'On-device DSH engine has not started';
+
+  @override
+  String get iosLocalProbeOnly =>
+      'A passing probe only proves that embedded Node.js actually executed. It does not mean DSH is installed, started, or serving a ready webpage.';
+
+  @override
+  String get iosLocalCapabilitiesTitle => 'Native capability checks for this run';
+
+  @override
+  String get iosLocalCapabilityFileSystem => 'App-local file reads and writes';
+
+  @override
+  String get iosLocalCapabilityIntl => 'Intl internationalization';
+
+  @override
+  String get iosLocalCapabilityBuiltinModule => 'Node built-in module access';
+
+  @override
+  String get iosLocalCapabilitySqlite => 'Node built-in SQLite';
+
+  @override
+  String get iosLocalCapabilitySqliteFts => 'SQLite FTS5 full-text search';
+
+  @override
+  String get iosLocalCapabilityImportMain => 'ES module entry-point detection';
+
+  @override
+  String get iosLocalCapabilityImportFilename => 'ES module filename';
+
+  @override
+  String get iosLocalCapabilityImportDirname => 'ES module directory name';
+
+  @override
+  String get iosLocalCheckPassed => 'Passed';
+
+  @override
+  String get iosLocalCheckFailed => 'Not passed';
+
+  @override
+  String get iosLocalBackgroundObservation => 'The app was backgrounded when the native layer last read its status.';
+
+  @override
+  String get iosLocalBackgroundLimit =>
+      'Recheck on-device status after background suspension or system termination. The probe does not promise continuous background execution.';
+
+  @override
+  String get iosLocalRunProbe => 'Run local probe';
+
+  @override
+  String get iosLocalRefresh => 'Refresh status';
+
+  @override
   String localEnvThisPhoneDetail(int storage, int memory) {
     return '$storage MB storage · $memory MB memory';
   }

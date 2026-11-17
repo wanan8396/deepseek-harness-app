@@ -21,14 +21,24 @@ final class RunnerTests: XCTestCase {
     }
     wait(for: [ready], timeout: 45)
     timer.invalidate()
-    let value = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(contentsOf: output)) as? [String: Any])
+    let data = try Data(contentsOf: output)
+    let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.json")
+    attachment.name = "embedded-node-capability-report.json"
+    attachment.lifetime = .keepAlways
+    add(attachment)
+    let value = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
     let versions = try XCTUnwrap(value["versions"] as? [String: Any])
     XCTAssertEqual(versions["node"] as? String, "24.22.1")
     XCTAssertEqual(value["schemaVersion"] as? Int, 1)
     XCTAssertEqual(value["phase"] as? String, "probeReady")
     XCTAssertEqual(value["engineReady"] as? Bool, false)
-    XCTAssertNotNil(value["runtimeCompatible"] as? Bool)
-    XCTAssertNotNil(value["capabilities"] as? [String: Any])
+    XCTAssertEqual(value["runtimeCompatible"] as? Bool, true,
+      "Embedded Node is missing required APIs: \(value["missing"] ?? "unknown")")
+    let capabilities = try XCTUnwrap(value["capabilities"] as? [String: Any])
+    for key in ["filesystemWriteRead", "getBuiltinModule", "sqlite", "sqliteFts5", "intl",
+                "importMetaMain", "importMetaFilename", "importMetaDirname"] {
+      XCTAssertEqual(capabilities[key] as? Bool, true, "Required API failed: \(key)")
+    }
     // A second call must not initialize another V8 runtime in this process.
     XCTAssertFalse(DshEmbeddedNode.startProbe(atPath: script, reportPath: output.path) { _ in })
   }

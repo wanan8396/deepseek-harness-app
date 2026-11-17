@@ -21,7 +21,7 @@
 
 固定 URL、包大小、SHA-256、源码/recipe commit 记录在 [requirements.json](../runtime/ios/requirements.json)。下载脚本先验哈希，再检查解压路径、框架切片与入口 API。二进制放入被忽略的 Vendor 目录，不进入 Git；JS 探针只访问自己收到的私有报告路径。
 
-该框架是第三方移植，不是 Apple 或 Node.js 官方 iOS 发行版；固定版本和通过探针都不等于已验证 DSH 所有模块。Node/框架及其第三方许可证随框架保留；见其 [LICENSE](https://github.com/fogtape/nodejs-mobile/blob/b5bcc8d8e70f055333cd5efc317e3eb55bf0c9a5/LICENSE)。
+该框架是第三方移植，不是 Apple 或 Node.js 官方 iOS 发行版；固定版本和通过探针都不等于已验证 DSH 所有模块。Node/框架及其第三方完整许可证固定为 [NodeMobile-LICENSE.txt](../runtime/ios/NodeMobile-LICENSE.txt)，随 App 一起打包；来源为其 [LICENSE](https://github.com/fogtape/nodejs-mobile/blob/b5bcc8d8e70f055333cd5efc317e3eb55bf0c9a5/LICENSE)。
 
 ## 直接在 GitHub 构建
 

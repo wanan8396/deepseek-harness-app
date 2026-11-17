@@ -30,7 +30,8 @@ public final class IosLocalEnginePlugin: NSObject, FlutterPlugin {
 
   private func start() {
     guard let script = Bundle.main.path(forResource: "probe", ofType: "cjs"),
-          Bundle.main.path(forResource: "requirements", ofType: "json") != nil else {
+          Bundle.main.path(forResource: "requirements", ofType: "json") != nil,
+          Bundle.main.path(forResource: "meta-probe", ofType: "mjs") != nil else {
       state = "error"; reason = "runtime_unavailable"; return
     }
     do {

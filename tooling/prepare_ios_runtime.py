@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PINNED_URL = 'https://github.com/fogtape/nodejs-mobile/releases/download/v24.22.1-0/nodejs-mobile-ios-24.22.1-0.zip'
 PINNED_SHA256 = '3fa1b8fb0720768b01c2e0dae3a17e788476e8c1613a1d9a54e206793b45326e'
 PINNED_BYTES = 62732962
-RESOURCE_NAMES = ('probe.cjs', 'meta-probe.mjs', 'requirements.json')
+RESOURCE_NAMES = ('probe.cjs', 'meta-probe.mjs', 'requirements.json', 'NodeMobile-LICENSE.txt')
 MAX_EXPANDED_BYTES = 1024 * 1024 * 1024
 
 

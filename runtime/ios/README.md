@@ -9,7 +9,7 @@
 - 提供者：第三方 `fogtape/nodejs-mobile`，不是 Node.js 官方 iOS 分发，也不是 `nodejs-mobile/nodejs-mobile` 的正式新版。
 - 完整 full 版：[`v24.22.1-0`](https://github.com/fogtape/nodejs-mobile/releases/tag/v24.22.1-0)，Node `24.22.1`；不选缺 SQLite/SEA 的 lite 版。
 - [归档](https://github.com/fogtape/nodejs-mobile/releases/download/v24.22.1-0/nodejs-mobile-ios-24.22.1-0.zip)：62,732,962 字节；SHA256 `3fa1b8fb0720768b01c2e0dae3a17e788476e8c1613a1d9a54e206793b45326e`。
-- [固定源码](https://github.com/fogtape/nodejs-mobile/tree/b5bcc8d8e70f055333cd5efc317e3eb55bf0c9a5)；[配方提交](https://github.com/fogtape/nodejs-mobile/commit/d4aedf536d035bf4eeab7a7a6e18b73d154d0ea5)；[MIT 与依赖许可](https://github.com/fogtape/nodejs-mobile/blob/b5bcc8d8e70f055333cd5efc317e3eb55bf0c9a5/LICENSE)。归档未携完整 LICENSE，发布 App 须带上对应完整许可文本和依赖署名，不以此链接代替发行许可。
+- [固定源码](https://github.com/fogtape/nodejs-mobile/tree/b5bcc8d8e70f055333cd5efc317e3eb55bf0c9a5)；[配方提交](https://github.com/fogtape/nodejs-mobile/commit/d4aedf536d035bf4eeab7a7a6e18b73d154d0ea5)；[MIT 与依赖许可](https://github.com/fogtape/nodejs-mobile/blob/b5bcc8d8e70f055333cd5efc317e3eb55bf0c9a5/LICENSE)。归档未携完整 LICENSE；对应完整许可已固定为 [NodeMobile-LICENSE.txt](NodeMobile-LICENSE.txt)，准备器复制到 App 资源中，不以链接代替发行许可。
 - 实物 `NodeMobile.xcframework` 是动态 framework：`ios-arm64` 和 `ios-arm64-simulator`，均最低 iOS 14.0；无 Intel/x86_64 模拟器 slice。
 - [公开头文件](https://github.com/fogtape/nodejs-mobile/blob/b5bcc8d8e70f055333cd5efc317e3eb55bf0c9a5/tools/ios-framework/NodeMobile/NodeMobile.h) 仅 `int node_start(int argc, char *argv[])`；[构建配方](https://github.com/fogtape/nodejs-mobile/blob/b5bcc8d8e70f055333cd5efc317e3eb55bf0c9a5/tools/ios_framework_prepare.sh) 使用 jitless V8、full ICU，保留 SQLite，并捆绑 polywasm 供 undici/fetch 使用。源码配方声明不是本项目真机验证。
 

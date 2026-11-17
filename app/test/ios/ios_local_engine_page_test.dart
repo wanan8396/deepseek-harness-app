@@ -48,6 +48,26 @@ Future<void> _mount(WidgetTester tester, {Widget page = const IosLocalEnginePage
   await _frames(tester);
 }
 
+// The variant restores the platform before Flutter verifies its debug globals;
+// package:test tearDown runs too late for that invariant.
+void _testIosWidgets(
+  String description,
+  WidgetTesterCallback callback, {
+  TargetPlatform platform = TargetPlatform.iOS,
+}) {
+  testWidgets(description, (tester) async {
+    tester.view.devicePixelRatio = 2;
+    tester.view.physicalSize = const Size(780, 1688);
+    try {
+      await callback(tester);
+    } finally {
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+      tester.view.reset();
+    }
+  }, variant: TargetPlatformVariant.only(platform));
+}
+
 class _LocalDestination extends WebConnectionController {
   @override
   WebConnectionState build() {
@@ -62,7 +82,7 @@ void main() {
   late List<MethodCall> calls;
 
   setUp(() {
-    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    AppLocale.use(AppLocale.zhCN);
     calls = [];
     messenger.setMockMethodCallHandler(_channel, (call) async {
       calls.add(call);
@@ -71,12 +91,11 @@ void main() {
   });
 
   tearDown(() {
-    debugDefaultTargetPlatformOverride = null;
     AppLocale.use(AppLocale.zhCN);
     messenger.setMockMethodCallHandler(_channel, null);
   });
 
-  testWidgets('reads native status and starts only an explicit local probe', (tester) async {
+  _testIosWidgets('reads native status and starts only an explicit local probe', (tester) async {
     final started = Completer<Object?>();
     messenger.setMockMethodCallHandler(_channel, (call) async {
       calls.add(call);
@@ -91,15 +110,18 @@ void main() {
     expect(calls.every((call) => call.arguments == null), isTrue);
     expect(tester.widget<FilledButton>(find.byKey(_start)).onPressed, isNull);
     started.complete(_status(state: 'starting'));
+    await messenger.platformMessagesFinished;
     await _frames(tester);
-    expect(find.text('正在运行本地探针'), findsWidgets);
+    final statusLabel = find.byKey(const ValueKey('ios-local-status'));
+    await tester.ensureVisible(statusLabel);
+    expect(tester.widget<Text>(statusLabel).data, '正在运行本地探针');
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(seconds: 1));
     expect(calls, hasLength(2));
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('compatible Node smoke is not an installed or running DSH engine', (tester) async {
+  _testIosWidgets('compatible Node smoke is not an installed or running DSH engine', (tester) async {
     messenger.setMockMethodCallHandler(_channel, (_) async => _status(
       state: 'probeReady',
       nodeVersion: '24.22.1',
@@ -123,7 +145,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('version incompatibility is reported only by its native reason', (tester) async {
+  _testIosWidgets('version incompatibility is reported only by its native reason', (tester) async {
     messenger.setMockMethodCallHandler(_channel, (_) async => _status(
       state: 'probeReady', nodeVersion: '18.20.4', reason: 'node_version',
     ));
@@ -134,7 +156,7 @@ void main() {
   });
 
   for (final reason in ['node_capabilities', 'probe_failed', 'probe_timeout', 'runtime_unavailable', 'unknown_reason']) {
-    testWidgets('native $reason remains an explicit local failure', (tester) async {
+    _testIosWidgets('native $reason remains an explicit local failure', (tester) async {
       messenger.setMockMethodCallHandler(_channel, (_) async => _status(state: 'error', reason: reason));
       await _mount(tester);
       expect(find.text('本地探针尚未就绪'), findsOneWidget);
@@ -145,16 +167,18 @@ void main() {
     });
   }
 
-  testWidgets('a missing bridge is visible instead of Ubuntu installation', (tester) async {
-    messenger.setMockMethodCallHandler(_channel, null);
+  _testIosWidgets('a missing bridge is visible instead of Ubuntu installation', (tester) async {
+    messenger.setMockMethodCallHandler(_channel, (_) async => throw MissingPluginException('iOS fixture'));
     await _mount(tester);
+    await messenger.platformMessagesFinished;
+    await _frames(tester);
     expect(find.textContaining('此安装包的本机运行时状态不可用'), findsOneWidget);
     expect(find.byType(RuntimeSetupPage), findsNothing);
     expect(tester.widget<OutlinedButton>(find.byKey(_refresh)).onPressed, isNotNull);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('malformed or falsely ready native replies fail closed', (tester) async {
+  _testIosWidgets('malformed or falsely ready native replies fail closed', (tester) async {
     messenger.setMockMethodCallHandler(_channel, (_) async => {..._status(), 'engineReady': true});
     await _mount(tester);
     expect(find.textContaining('此安装包的本机运行时状态不可用'), findsOneWidget);
@@ -162,7 +186,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('status requests have a bounded wait and recover through refresh', (tester) async {
+  _testIosWidgets('status requests have a bounded wait and recover through refresh', (tester) async {
     final pending = Completer<Object?>();
     messenger.setMockMethodCallHandler(_channel, (_) => pending.future);
     await _mount(tester);
@@ -178,7 +202,7 @@ void main() {
     expect(tester.widget<FilledButton>(find.byKey(_start)).onPressed, isNotNull);
   });
 
-  testWidgets('starting polls at 500ms and stops after native completion', (tester) async {
+  _testIosWidgets('starting polls at 500ms and stops after native completion', (tester) async {
     messenger.setMockMethodCallHandler(_channel, (call) async {
       calls.add(call);
       return calls.length < 3
@@ -197,7 +221,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('iOS RootGate bypasses both Android runtime and saved remote state', (tester) async {
+  _testIosWidgets('iOS RootGate bypasses both Android runtime and saved remote state', (tester) async {
     await tester.pumpWidget(testApp(const RootGate(), overrides: [
       webConnectionProvider.overrideWith(() => throw StateError('iOS read computer state')),
       localRuntimeProvider.overrideWith(() => throw StateError('iOS read Android runtime')),
@@ -209,14 +233,13 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('iOS retains the RootGate test-only home override', (tester) async {
+  _testIosWidgets('iOS retains the RootGate test-only home override', (tester) async {
     await _mount(tester, page: const RootGate(home: Scaffold(body: Text('test home'))));
     expect(find.text('test home'), findsOneWidget);
     expect(calls, isEmpty);
   });
 
-  testWidgets('Android RootGate retains its existing local path', (tester) async {
-    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+  _testIosWidgets('Android RootGate retains its existing local path', (tester) async {
     await tester.pumpWidget(goldenApp(
       home: const RootGate(home: Scaffold(body: Text('Android home'))),
       brightness: Brightness.light,
@@ -233,13 +256,29 @@ void main() {
     expect(find.byType(IosLocalEnginePage), findsNothing);
     expect(calls, isEmpty);
     expect(tester.takeException(), isNull);
-  });
+  }, platform: TargetPlatform.android);
 
-  testWidgets('the probe UI also renders English without changing native meaning', (tester) async {
+  _testIosWidgets('the probe UI also renders English without changing native meaning', (tester) async {
     AppLocale.use(AppLocale.en);
     await _mount(tester);
     expect(find.text('Run local probe'), findsOneWidget);
     expect(find.text('On-device DSH engine has not started'), findsOneWidget);
     expect(find.textContaining('remote engine'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  _testIosWidgets('English branding and controls fit a narrow large-text viewport', (tester) async {
+    AppLocale.use(AppLocale.en);
+    tester.view.physicalSize = const Size(640, 1136);
+    await _mount(tester, page: Builder(
+      builder: (context) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(1.5)),
+        child: const IosLocalEnginePage(),
+      ),
+    ));
+    expect(tester.takeException(), isNull);
+    await tester.ensureVisible(find.byKey(_start));
+    expect(tester.widget<FilledButton>(find.byKey(_start)).onPressed, isNotNull);
+    expect(tester.takeException(), isNull);
   });
 }

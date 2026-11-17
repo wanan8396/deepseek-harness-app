@@ -240,7 +240,32 @@ class _IosLocalEnginePageState extends State<IosLocalEnginePage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                const SizedBox(height: 200, child: StartupCover()),
+                Center(
+                   child: MediaQuery(
+                     data: MediaQuery.of(context).copyWith(
+                       disableAnimations: WidgetsBinding.instance.platformDispatcher.accessibilityFeatures.disableAnimations,
+                     ),
+                     child: Image(
+                       image: StartupCover.image,
+                       key: const ValueKey('local-web-startup-cover'),
+                       height: 148,
+                       width: 148 * 2 / 3,
+                       fit: BoxFit.contain,
+                       excludeFromSemantics: true,
+                     ),
+                   ),
+                 ),
+                 const SizedBox(height: 12),
+                 Text(
+                   l10n.localWebExploreBeyond,
+                   textAlign: TextAlign.center,
+                   style: theme.textTheme.titleLarge?.copyWith(
+                     fontSize: 22,
+                     fontWeight: FontWeight.w500,
+                     letterSpacing: 4,
+                     height: 1.35,
+                   ),
+                 ),
                 const SizedBox(height: 24),
                 Text(l10n.iosLocalTitle, style: theme.textTheme.headlineSmall, textAlign: TextAlign.center),
                 const SizedBox(height: 8),

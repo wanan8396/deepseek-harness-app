@@ -512,6 +512,222 @@ abstract class L10n {
   /// **'分享的文字.txt'**
   String get fileSharedText;
 
+  /// No description provided for @iosLocalTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'iPhone / iPad 本机引擎'**
+  String get iosLocalTitle;
+
+  /// No description provided for @iosLocalScope.
+  ///
+  /// In zh, this message translates to:
+  /// **'直接检查此设备内嵌的 Node.js；不连接电脑或远程引擎。'**
+  String get iosLocalScope;
+
+  /// No description provided for @iosLocalChecking.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在读取本机状态'**
+  String get iosLocalChecking;
+
+  /// No description provided for @iosLocalProbeIdle.
+  ///
+  /// In zh, this message translates to:
+  /// **'本地探针尚未运行'**
+  String get iosLocalProbeIdle;
+
+  /// No description provided for @iosLocalProbeIdleDetail.
+  ///
+  /// In zh, this message translates to:
+  /// **'运行探针，验证此应用内嵌 Node.js 的实际执行能力。'**
+  String get iosLocalProbeIdleDetail;
+
+  /// No description provided for @iosLocalProbeRunning.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在运行本地探针'**
+  String get iosLocalProbeRunning;
+
+  /// No description provided for @iosLocalProbeRunningDetail.
+  ///
+  /// In zh, this message translates to:
+  /// **'由 iOS 原生层运行内嵌 Node.js，并读取本次执行的检测结果。'**
+  String get iosLocalProbeRunningDetail;
+
+  /// No description provided for @iosLocalProbePassed.
+  ///
+  /// In zh, this message translates to:
+  /// **'内嵌 Node.js 探针已完成'**
+  String get iosLocalProbePassed;
+
+  /// No description provided for @iosLocalProbeCompatible.
+  ///
+  /// In zh, this message translates to:
+  /// **'Node.js 版本与已检测能力符合当前要求。DSH 引擎适配仍在验证，尚未启动。'**
+  String get iosLocalProbeCompatible;
+
+  /// No description provided for @iosLocalProbeUnavailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'本地探针尚未就绪'**
+  String get iosLocalProbeUnavailable;
+
+  /// No description provided for @iosLocalNodeVersionMismatch.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前内嵌 Node.js 版本未满足 DSH 要求；需先更新原生运行时。'**
+  String get iosLocalNodeVersionMismatch;
+
+  /// No description provided for @iosLocalCapabilitiesMissing.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前内嵌 Node.js 的检测能力尚未满足 DSH 要求。'**
+  String get iosLocalCapabilitiesMissing;
+
+  /// No description provided for @iosLocalProbeTimeout.
+  ///
+  /// In zh, this message translates to:
+  /// **'读取或运行探针已超时。可刷新状态查看原生层的实际结果。'**
+  String get iosLocalProbeTimeout;
+
+  /// No description provided for @iosLocalProbeFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'本地探针执行失败。刷新状态后查看本次原生检测结果。'**
+  String get iosLocalProbeFailed;
+
+  /// No description provided for @iosLocalRuntimeUnavailable.
+  ///
+  /// In zh, this message translates to:
+  /// **'此安装包的本机运行时状态不可用。刷新可重试读取；此处不会替换为远程引擎。'**
+  String get iosLocalRuntimeUnavailable;
+
+  /// No description provided for @iosLocalNodeVersion.
+  ///
+  /// In zh, this message translates to:
+  /// **'实际 Node.js：{version}'**
+  String iosLocalNodeVersion(String version);
+
+  /// No description provided for @iosLocalRequiredNode.
+  ///
+  /// In zh, this message translates to:
+  /// **'DSH 所需 Node.js：{range}'**
+  String iosLocalRequiredNode(String range);
+
+  /// No description provided for @iosLocalDshVersion.
+  ///
+  /// In zh, this message translates to:
+  /// **'目标 DSH：{version}'**
+  String iosLocalDshVersion(String version);
+
+  /// No description provided for @iosLocalNotDetected.
+  ///
+  /// In zh, this message translates to:
+  /// **'尚未检测'**
+  String get iosLocalNotDetected;
+
+  /// No description provided for @iosLocalDshNotStarted.
+  ///
+  /// In zh, this message translates to:
+  /// **'DSH 本机引擎未启动'**
+  String get iosLocalDshNotStarted;
+
+  /// No description provided for @iosLocalProbeOnly.
+  ///
+  /// In zh, this message translates to:
+  /// **'探针通过仅证明内嵌 Node.js 已实际执行，不代表 DSH 已安装、已启动或网页已就绪。'**
+  String get iosLocalProbeOnly;
+
+  /// No description provided for @iosLocalCapabilitiesTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'本次原生能力检测'**
+  String get iosLocalCapabilitiesTitle;
+
+  /// No description provided for @iosLocalCapabilityFileSystem.
+  ///
+  /// In zh, this message translates to:
+  /// **'应用内文件读写'**
+  String get iosLocalCapabilityFileSystem;
+
+  /// No description provided for @iosLocalCapabilityIntl.
+  ///
+  /// In zh, this message translates to:
+  /// **'Intl 国际化'**
+  String get iosLocalCapabilityIntl;
+
+  /// No description provided for @iosLocalCapabilityBuiltinModule.
+  ///
+  /// In zh, this message translates to:
+  /// **'Node 内置模块访问'**
+  String get iosLocalCapabilityBuiltinModule;
+
+  /// No description provided for @iosLocalCapabilitySqlite.
+  ///
+  /// In zh, this message translates to:
+  /// **'Node 内置 SQLite'**
+  String get iosLocalCapabilitySqlite;
+
+  /// No description provided for @iosLocalCapabilitySqliteFts.
+  ///
+  /// In zh, this message translates to:
+  /// **'SQLite FTS5 全文检索'**
+  String get iosLocalCapabilitySqliteFts;
+
+  /// No description provided for @iosLocalCapabilityImportMain.
+  ///
+  /// In zh, this message translates to:
+  /// **'ES 模块入口检测'**
+  String get iosLocalCapabilityImportMain;
+
+  /// No description provided for @iosLocalCapabilityImportFilename.
+  ///
+  /// In zh, this message translates to:
+  /// **'ES 模块文件名'**
+  String get iosLocalCapabilityImportFilename;
+
+  /// No description provided for @iosLocalCapabilityImportDirname.
+  ///
+  /// In zh, this message translates to:
+  /// **'ES 模块目录名'**
+  String get iosLocalCapabilityImportDirname;
+
+  /// No description provided for @iosLocalCheckPassed.
+  ///
+  /// In zh, this message translates to:
+  /// **'通过'**
+  String get iosLocalCheckPassed;
+
+  /// No description provided for @iosLocalCheckFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'未通过'**
+  String get iosLocalCheckFailed;
+
+  /// No description provided for @iosLocalBackgroundObservation.
+  ///
+  /// In zh, this message translates to:
+  /// **'原生层上次读取时，应用处于后台。'**
+  String get iosLocalBackgroundObservation;
+
+  /// No description provided for @iosLocalBackgroundLimit.
+  ///
+  /// In zh, this message translates to:
+  /// **'后台暂停与系统终止后需重新确认本机状态；探针不承诺持续后台运行。'**
+  String get iosLocalBackgroundLimit;
+
+  /// No description provided for @iosLocalRunProbe.
+  ///
+  /// In zh, this message translates to:
+  /// **'运行本地探针'**
+  String get iosLocalRunProbe;
+
+  /// No description provided for @iosLocalRefresh.
+  ///
+  /// In zh, this message translates to:
+  /// **'刷新状态'**
+  String get iosLocalRefresh;
+
   /// No description provided for @localEnvThisPhoneDetail.
   ///
   /// In zh, this message translates to:

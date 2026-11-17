@@ -27,10 +27,12 @@ def main():
     assert not any(app.rglob('libproot.so')), 'Android runtime entered the iOS bundle'
     assert not any(app.rglob('rootfs-*.tar.xz')), 'Linux rootfs entered the iOS bundle'
     root = Path(__file__).resolve().parents[1]
-    for name in ['probe.cjs', 'meta-probe.mjs', 'requirements.json']:
+    for name in ['probe.cjs', 'meta-probe.mjs', 'requirements.json', 'NodeMobile-LICENSE.txt']:
         assert (app / name).read_bytes() == (root / 'runtime/ios' / name).read_bytes(), name
-    deps = subprocess.check_output(['otool', '-L', str(binary)], text=True)
-    assert 'NodeMobile' in deps or node.exists()
+    bridge = app / 'Frameworks/DshEmbeddedNode.framework/DshEmbeddedNode'
+    assert bridge.is_file(), 'Embedded runtime bridge framework missing'
+    deps = subprocess.check_output(['otool', '-L', str(bridge)], text=True)
+    assert '@rpath/NodeMobile.framework/NodeMobile' in deps, 'Bridge does not link the embedded runtime'
     result = dict(bundle=info['CFBundleIdentifier'], target='iOS Simulator' if args.simulator else 'iOS device',
                   nodeFrameworkSha256=hashlib.sha256(node.read_bytes()).hexdigest(),
                   platforms=info['CFBundleSupportedPlatforms'], devices=info['UIDeviceFamily'],
