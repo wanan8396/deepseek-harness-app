@@ -109,7 +109,7 @@ void main() {
     expect(calls.every((call) => call.arguments == null), isTrue);
     expect(tester.widget<FilledButton>(find.byKey(_start)).onPressed, isNull);
     started.complete(_status(state: 'starting'));
-    await messenger.platformMessagesFinished;
+    await tester.pump();
     await _frames(tester);
     final statusLabel = find.byKey(const ValueKey('ios-local-status'));
     await tester.ensureVisible(statusLabel);
@@ -169,7 +169,7 @@ void main() {
   _testIosWidgets('a missing bridge is visible instead of Ubuntu installation', (tester) async {
     messenger.setMockMethodCallHandler(_channel, (_) async => throw MissingPluginException('iOS fixture'));
     await _mount(tester);
-    await messenger.platformMessagesFinished;
+    await tester.pump();
     await _frames(tester);
     expect(find.textContaining('此安装包的本机运行时状态不可用'), findsOneWidget);
     expect(find.byType(RuntimeSetupPage), findsNothing);
