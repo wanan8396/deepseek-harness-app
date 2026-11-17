@@ -1,0 +1,44 @@
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
+/// Secure storage for saved computer login URLs. Never SharedPreferences.
+/// Injectable so state and tests can use [MemorySecretStore].
+abstract class SecretStore {
+  Future<String?> read(String key);
+  Future<void> write(String key, String value);
+  Future<void> delete(String key);
+}
+
+/// Android Keystore-backed storage (flutter_secure_storage).
+class SecureSecretStore implements SecretStore {
+  SecureSecretStore([FlutterSecureStorage? storage]) : _storage = storage ?? const FlutterSecureStorage();
+
+  final FlutterSecureStorage _storage;
+
+  /// Keep the existing namespace so saved login URLs survive this source move.
+  static String _k(String key) => 'remote.$key';
+
+  @override
+  Future<String?> read(String key) => _storage.read(key: _k(key));
+
+  @override
+  Future<void> write(String key, String value) => _storage.write(key: _k(key), value: value);
+
+  @override
+  Future<void> delete(String key) => _storage.delete(key: _k(key));
+}
+
+/// In-memory store for tests and previews.
+class MemorySecretStore implements SecretStore {
+  MemorySecretStore([Map<String, String>? initial]) : values = {...?initial};
+
+  final Map<String, String> values;
+
+  @override
+  Future<String?> read(String key) async => values[key];
+
+  @override
+  Future<void> write(String key, String value) async => values[key] = value;
+
+  @override
+  Future<void> delete(String key) async => values.remove(key);
+}

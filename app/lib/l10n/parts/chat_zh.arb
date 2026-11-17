@@ -1,0 +1,16 @@
+{
+  "chatErrReasoningEffortUnsupported": "当前模型不支持此推理档位，请调整档位或换模型",
+  "chatComposerHint": "给 DSH 发消息…",
+  "chatErrApiKey": "API Key 无效或已过期",
+  "chatErrBalance": "余额不足",
+  "chatErrAccountQuota": "账号额度已用完",
+  "chatErrRateLimit": "请求太频繁，稍后再试",
+  "chatErrContextLength": "对话太长，发送 /compact 压缩后再试",
+  "chatErrModelUnavailable": "模型服务暂时不可用",
+  "chatErrModelTimeout": "模型响应超时",
+  "chatErrModelConnection": "没能连上模型服务",
+  "chatErrModelEmpty": "模型没有返回内容",
+  "chatErrEngineOutdated": "这个模型需要新版引擎",
+  "chatErrModelUnsupported": "当前模型不可用",
+  "chatErrTurn": "本轮出错了"
+}

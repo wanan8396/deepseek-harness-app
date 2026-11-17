@@ -1,0 +1,11 @@
+{
+  "localEnvThisPhoneDetail": "{storage} MB storage · {memory} MB memory",
+  "localEnvThisPhoneDetailShort": "{memory} MB memory while running",
+  "localEnvLowStorage": "Needs about {needed} MB free",
+  "localEnvRemoteDetail": "Use DSH on your computer or server",
+  "localEnvInstallTitle": "Install on this phone",
+  "localEnvInstallMessage": "Run DSH right on this phone",
+  "localEnvFactStorage": "About {storage} MB of storage",
+  "localEnvFactMemory": "About {memory} MB of memory while running",
+  "localEnvNotInstalled": "Not installed on this phone"
+}

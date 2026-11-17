@@ -1,0 +1,85 @@
+// Names, icons and one-line reasons for the system-permission items
+// (lib/state/access_state.dart). The makers' switches are named as each
+// maker names them, with where they live.
+
+import 'package:flutter/widgets.dart';
+
+import '../../l10n/l10n.dart';
+import '../../state/access_state.dart';
+import '../../state/app_info.dart';
+import '../theme/app_icons.dart';
+
+extension AccessFeatureText on AccessFeature {
+  IconData get icon => switch (this) {
+    AccessFeature.files => AppIcons.fileAccess,
+    AccessFeature.background => AppIcons.keepAlive,
+  };
+
+  String title(L10n l10n) => switch (this) {
+    AccessFeature.files => l10n.accessFeatureFiles,
+    AccessFeature.background => l10n.accessFeatureBackground,
+  };
+
+  /// What it needs, in one line.
+  String needs(L10n l10n) => switch (this) {
+    AccessFeature.files => l10n.accessFeatureFilesNeeds,
+    AccessFeature.background => l10n.accessFeatureBackgroundNeeds,
+  };
+}
+
+extension AccessItemText on AccessItem {
+  IconData get icon => switch (this) {
+    AccessItem.storage => AppIcons.fileAccess,
+    AccessItem.notifications => AppIcons.notifications,
+    AccessItem.battery => AppIcons.keepAlive,
+    AccessItem.vendorBackground => AppIcons.highPower,
+    AccessItem.autostart => AppIcons.autostart,
+  };
+
+  /// The switch as the system (or [vendor]'s ROM) names it.
+  String title(L10n l10n, {String? vendor}) => switch (this) {
+    AccessItem.storage => l10n.accessStorageTitle,
+    AccessItem.notifications => l10n.accessNotifyTitle,
+    AccessItem.battery => l10n.accessBatteryTitle,
+    AccessItem.vendorBackground => switch (vendor) {
+      'vivo' => l10n.pluginsAllowHighPower,
+      'xiaomi' => l10n.pluginsXiaomiBatterySetting,
+      'oppo' => l10n.pluginsOppoBatterySetting,
+      _ => l10n.pluginsHuaweiBatterySetting,
+    },
+    AccessItem.autostart => l10n.accessAutostartTitle,
+  };
+
+  /// Why, in one line.
+  String why(L10n l10n) => switch (this) {
+    AccessItem.storage => l10n.accessStorageWhy,
+    AccessItem.notifications => l10n.accessNotifyWhy,
+    AccessItem.battery => l10n.accessBatteryWhy,
+    AccessItem.vendorBackground => l10n.accessVendorBackgroundWhy,
+    AccessItem.autostart => l10n.accessAutostartWhy,
+  };
+
+  /// Where a maker's switch lives, for when its own page doesn't open and
+  /// the app's details page does; null for the system's items.
+  String? path(L10n l10n, {String? vendor, String? app}) {
+    final name = app ?? AppInfo.name;
+    return switch ((this, vendor)) {
+      (AccessItem.vendorBackground, 'vivo') => l10n.pluginsVivoBatteryPath(name),
+      (AccessItem.vendorBackground, 'xiaomi') => l10n.pluginsXiaomiBatteryPath(name),
+      (AccessItem.vendorBackground, 'huawei' || 'honor') => l10n.pluginsHuaweiBatteryPath(name),
+      (AccessItem.vendorBackground, 'oppo') => l10n.pluginsOppoBatteryPath(name),
+      (AccessItem.autostart, 'vivo') => l10n.accessVivoAutostartPath(name),
+      (AccessItem.autostart, 'xiaomi') => l10n.accessXiaomiAutostartPath(name),
+      _ => null,
+    };
+  }
+}
+
+extension AccessStateText on AccessState {
+  String label(L10n l10n) => switch (this) {
+    AccessState.on => l10n.accessStateOn,
+    AccessState.off => l10n.accessStateOff,
+    AccessState.visited => l10n.accessStateVisited,
+    AccessState.unknown => l10n.accessStateUnknown,
+  };
+}

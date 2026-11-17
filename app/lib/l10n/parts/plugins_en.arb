@@ -1,0 +1,11 @@
+{
+  "pluginsAllowHighPower": "Allow high background power usage",
+  "pluginsVivoBatteryPath": "Battery › Background power consumption management › {app}",
+  "pluginsXiaomiBatterySetting": "Battery saver: No restrictions",
+  "pluginsXiaomiBatteryPath": "Manage apps › {app} › Battery saver",
+  "pluginsHuaweiBatterySetting": "Allow background activity",
+  "pluginsHuaweiBatteryPath": "Battery › App launch › {app}",
+  "pluginsOppoBatterySetting": "Allow background activity",
+  "pluginsOppoBatteryPath": "Battery › App battery management › {app}",
+  "pluginsQrCode": "QR code"
+}

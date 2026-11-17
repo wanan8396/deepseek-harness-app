@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+# Builds the official Android phone shell. Phone and emulator APKs come from
+# here, dev and release alike: each build gets a fresh versionCode (the build
+# minute, see tooling/build_number.py), so it installs over the previous one and
+# the system refreshes what it cached for the old build (icons included).
+#
+#   tooling/build-apk.sh                       release, arm64 (phone)
+#   tooling/build-apk.sh -f x64                release, x64 (emulator)
+#   tooling/build-apk.sh -f all                both flavors with one build number (local testing only)
+#   tooling/build-apk.sh --debug -f x64 -t lib/main.dart
+#   tooling/build-apk.sh --dry-run -f all      print the commands, build nothing
+#   tooling/build-apk.sh -- --dart-define=K=V  extra flags for `flutter build apk`
+#
+#   -f, --flavor arm64|x64|all       default arm64
+#   --release | --debug | --profile  default --release
+#   -t, --target FILE                Dart entry point, relative to app/
+#   -n, --build-number N             use N instead of the build minute (never lower than what's installed)
+#   --build-name X.Y.Z               version name instead of the official payload's
+#   --keep-daemon                    leave the Gradle daemon running afterwards
+#   --dry-run                        print what would run
+#
+# The version name comes from the official runtime manifest unless overridden.
+# This script takes no machine locks; callers add their own.
+set -euo pipefail
+
+ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+APP="$ROOT/app"
+OUT="$APP/build/app/outputs/flutter-apk"
+
+usage() { sed -n '2,22p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+die() { echo "build-apk: $*" >&2; exit 1; }
+
+flavor=arm64 mode=release target='' code='' name='' dry=0 keep_daemon=0
+extra=()
+while (($#)); do
+  case "$1" in
+    -f | --flavor) flavor=${2:?--flavor needs a value}; shift 2 ;;
+    --flavor=*) flavor=${1#*=}; shift ;;
+    --release | --debug | --profile) mode=${1#--}; shift ;;
+    -t | --target) target=${2:?--target needs a file}; shift 2 ;;
+    --target=*) target=${1#*=}; shift ;;
+    -n | --build-number) code=${2:?--build-number needs a number}; shift 2 ;;
+    --build-number=*) code=${1#*=}; shift ;;
+    --build-name) name=${2:?--build-name needs a version}; shift 2 ;;
+    --build-name=*) name=${1#*=}; shift ;;
+    --keep-daemon) keep_daemon=1; shift ;;
+    --dry-run) dry=1; shift ;;
+    -h | --help) usage; exit 0 ;;
+    --) shift; extra=("$@"); break ;;
+    *) usage >&2; die "unknown option: $1" ;;
+  esac
+done
+
+case "$flavor" in
+  arm64 | x64) flavors=("$flavor") ;;
+  all) flavors=(arm64 x64) ;;
+  *) die "flavor is arm64, x64 or all: $flavor" ;;
+esac
+for arg in "${extra[@]}"; do
+  case "$arg" in
+    --build-number* | --build-name* | --flavor* | --target-platform*)
+      die "$arg is set by this script; use its own options" ;;
+    --split-per-abi) die "--split-per-abi adds an ABI offset to versionCode; flavors already split by ABI" ;;
+  esac
+done
+
+# Version name follows the official payload, independently of the build number.
+if [[ -z $name ]]; then
+  abi=arm64-v8a
+  [[ $flavor == x64 ]] && abi=x86_64
+  name=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["dshVersion"])' "$ROOT/runtime/out/$abi/assets/runtime/manifest.json")
+fi
+[[ $name =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || die "not a version name: '$name'"
+
+# Build number: the build minute unless given.
+if [[ -z $code ]]; then
+  code=$(python3 "$ROOT/tooling/build_number.py")
+else
+  [[ $code =~ ^[0-9]+$ ]] || die "build number is a positive integer: $code"
+  python3 "$ROOT/tooling/build_number.py" --check "$code" || exit 1
+fi
+when=$(python3 "$ROOT/tooling/build_number.py" --decode "$code" 2>/dev/null || echo "custom")
+
+platform_of() { case "$1" in arm64) echo android-arm64 ;; x64) echo android-x64 ;; esac; }
+
+commands=()
+for f in "${flavors[@]}"; do
+  cmd=(flutter build apk "--$mode" --flavor "$f" --target-platform "$(platform_of "$f")"
+    --build-name "$name" --build-number "$code" "--dart-define=DSH_APP_VERSION=$name+$code")
+  [[ -n $target ]] && cmd+=(-t "$target")
+  cmd+=("${extra[@]}")
+  commands+=("$(printf '%q ' "${cmd[@]}")")
+done
+
+echo "DeepSeek harness $name ($code, $when) · $mode · ${flavors[*]}"
+if ((dry)); then
+  for c in "${commands[@]}"; do echo "(cd app && ${c% })"; done
+  ((keep_daemon)) || echo "(cd app/android && ./gradlew --stop)"
+  exit 0
+fi
+
+# Every build must include an explicitly unmodified official runtime.
+python3 "$ROOT/tooling/check_local_web_runtime.py" --flavor "$flavor" --official
+
+# Toolchain: use what's on PATH; the gitignored tooling/env.sh is the fallback.
+if ! command -v flutter >/dev/null 2>&1; then
+  [[ -f $ROOT/tooling/env.sh ]] && source "$ROOT/tooling/env.sh"
+  command -v flutter >/dev/null 2>&1 || die "flutter is not on PATH"
+fi
+
+stop_daemon() {
+  ((keep_daemon)) && return 0
+  (cd "$APP/android" && ./gradlew --stop -q >/dev/null 2>&1) || true
+  local pids
+  pids=$(pgrep -f '[G]radleDaemon' || true)
+  [[ -n $pids ]] && kill $pids 2>/dev/null || true
+}
+trap 'stop_daemon' EXIT
+
+# aapt2 to read back what was built (optional).
+aapt2=$(command -v aapt2 || true)
+if [[ -z $aapt2 ]]; then
+  sdk=${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}
+  [[ -n $sdk ]] || sdk=$(sed -n 's/^sdk\.dir=//p' "$APP/android/local.properties" 2>/dev/null || true)
+  aapt2=$(ls -1d "$sdk"/build-tools/*/aapt2 2>/dev/null | sort -V | tail -n 1 || true)
+fi
+[[ -n $aapt2 ]] || echo "build-apk: aapt2 not found; the APKs' versionCode won't be read back" >&2
+
+built=()
+for i in "${!flavors[@]}"; do
+  f=${flavors[$i]}
+  echo "→ ${commands[$i]% }"
+  (cd "$APP" && eval "${commands[$i]}")
+  apk="$OUT/app-$f-$mode.apk"
+  [[ -f $apk ]] || die "$f: no APK at $apk"
+  if [[ -n $aapt2 ]]; then
+    badge=$("$aapt2" dump badging "$apk" 2>/dev/null | sed -n '/^package:/p' || true)
+    [[ $badge == *"versionCode='$code'"* && $badge == *"versionName='$name'"* ]] ||
+      die "$f: APK says ${badge:-nothing}; expected versionName '$name' versionCode '$code'"
+  fi
+  built+=("$apk")
+done
+
+echo
+echo "DeepSeek harness $name ($code, $when)"
+for apk in "${built[@]}"; do echo "  ${apk#"$ROOT/"}"; done

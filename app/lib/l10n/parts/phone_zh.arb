@@ -1,0 +1,86 @@
+{
+  "phoneDiagnosticsCollecting": "正在收集…",
+  "phoneDiagnosticsPacking": "正在打包…",
+  "phoneDiagnosticsSharing": "正在打开分享…",
+  "phoneDiagnosticsSaving": "正在存到「下载」…",
+  "phoneDiagnosticsShare": "分享诊断包",
+  "phoneDiagnosticsShareHint": "附在问题反馈里",
+  "phoneDiagnosticsSave": "存到「下载」",
+  "phoneDiagnosticsSaveHint": "存进 下载/DeepSeek-harness",
+  "phoneDiagnosticsNote": "含版本、设备、日志和最近一次崩溃，不含 Key 和令牌",
+  "phoneDiagnosticsExport": "导出诊断包",
+  "phoneSafeMode": "安全模式",
+  "phoneEngineInstallRuntime": "安装运行环境",
+  "phoneEngineNotInstalled": "未安装",
+  "phoneEngineInstalling": "正在安装",
+  "phoneEngineStoppedSafe": "已停止 · 安全模式",
+  "phoneEngineStartingSafe": "正在以安全模式启动",
+  "phoneEngineStarting": "正在启动",
+  "phoneEngineRunningProbation": "运行中 · 试用",
+  "phoneEngineStartupFailed": "启动失败",
+  "phoneEngineCrashed": "已崩溃",
+  "phoneEngineKilled": "被系统结束",
+  "phoneEngineError": "出错了",
+  "phoneEngineRuntimeCorrupt": "App 内的运行环境包已损坏，请重新安装 App",
+  "phoneEngineExited": "引擎意外退出了",
+  "phoneEngineRuntimeMissing": "运行环境还没有安装",
+  "phoneEngineSafeUnsupported": "这个版本的运行环境不支持安全模式，请更新 App",
+  "phoneEngineRuntimeIncomplete": "App 内的运行环境包不完整，请重新安装 App",
+  "phoneLogEmpty": "还没有日志",
+  "phoneLogShareTitle": "DSH 引擎日志",
+  "phoneLogCopyAll": "复制全部",
+  "phoneFailureLaunch": "本机运行环境未能启动",
+  "phoneAccentMist": "雾蓝",
+  "phoneAccentDaiqing": "黛青",
+  "phoneAccentDusk": "暮紫",
+  "phoneAccentTurquoise": "松石",
+  "phoneAccentAmber": "琥珀",
+  "phoneAccentGraphite": "石墨",
+  "phoneAccentCustom": "自定义",
+  "phoneEngineInstallPercent": "正在安装 · {percent}%",
+  "@phoneEngineInstallPercent": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "phoneEngineStatusSemantics": "{prefix}引擎：{status}",
+  "@phoneEngineStatusSemantics": {
+    "placeholders": {
+      "prefix": {
+        "type": "String"
+      },
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "phoneLogLineCount": "{count} 行",
+  "@phoneLogLineCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "phoneLogCopiedLines": "已复制 {count} 行",
+  "@phoneLogCopiedLines": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "phoneEngineStorageDetails": "存储空间不足：需要约 {needed} MB，当前可用 {free} MB",
+  "@phoneEngineStorageDetails": {
+    "placeholders": {
+      "needed": {
+        "type": "String"
+      },
+      "free": {
+        "type": "String"
+      }
+    }
+  }
+}

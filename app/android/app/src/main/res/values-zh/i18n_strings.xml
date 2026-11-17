@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 原生界面文字（通知、悬浮窗、前台服务、Toast），经 i18n/AppStrings.kt 跟随 App 语言。 -->
+<resources>
+    <!-- notify -->
+    <string name="notify_decline">拒绝</string>
+    <string name="notify_allow_once">允许本次</string>
+    <string name="notify_group_chats">对话</string>
+    <string name="notify_channel_done">一轮结束</string>
+    <string name="notify_channel_done_description">App 在后台时，一轮对话完成、出错或被停下</string>
+    <string name="notify_channel_attention">等你确认</string>
+    <string name="notify_channel_attention_description">AI 等你确认一步操作，或等你回答问题</string>
+    <string name="notify_action_failed">没能处理</string>
+    <string name="notify_action_processing">正在处理</string>
+    <string name="notify_action_allowed">已允许</string>
+    <string name="notify_action_declined">已拒绝</string>
+    <string name="notify_action_expired">已失效</string>
+    <plurals name="notify_reminders">
+        <item quantity="other">有 %1$d 条提醒</item>
+    </plurals>
+    <plurals name="notify_reminder_count">
+        <item quantity="other">%1$d 条提醒</item>
+    </plurals>
+    <string name="notify_new_reminder">有新提醒</string>
+    <!-- safe -->
+    <string name="safe_normal_recovered">主配置已经正常运行 2 分钟，已恢复正常模式。</string>
+    <string name="safe_probation_failed">正常模式还是起不来，已回到安全模式。</string>
+    <string name="safe_auto_started">DSH 连续两次启动失败，已用安全模式启动。你的对话都在。</string>
+    <string name="safe_patch_hazard">全局补丁文件：对所有配置（包括安全模式）都生效，可能就是它让 DSH 起不来。</string>
+    <string name="safe_env_hazard">设置了 %1$s，DSH 不允许在 .env 里设置这些变量，会拒绝启动。</string>
+    <!-- service -->
+    <string name="service_stopped_channel">引擎停止提醒</string>
+    <string name="service_stopped_title">本地 DSH 已停止</string>
+    <string name="service_updating">正在更新运行环境</string>
+    <string name="service_preparing">正在准备运行环境</string>
+    <string name="install_alert_channel">运行环境</string>
+    <string name="install_ready_title">运行环境已就绪</string>
+    <string name="install_ready_text">点按继续</string>
+    <string name="install_failed_title">运行环境安装未完成</string>
+    <string name="install_failed_text">点按查看</string>
+    <string name="service_channel">本地 DSH 引擎</string>
+    <string name="service_channel_description">本地 DeepSeek Harness 运行时的运行状态</string>
+    <string name="service_starting_safe">正在以安全模式启动本地 DSH…</string>
+    <string name="service_starting">正在启动本地 DSH…</string>
+    <string name="service_running_safe">本地 DSH 官方恢复配置运行中</string>
+    <string name="service_running">本地 DSH 运行中</string>
+    <string name="service_stopping">正在停止…</string>
+    <string name="service_title">本地 DSH</string>
+    <string name="service_stop">停止引擎</string>
+    <string name="service_package_checksum_failed">运行时包校验失败（sha256 不匹配），请重新安装 App</string>
+    <string name="service_storage_insufficient">存储空间不足：需要约 %1$s MB，当前可用 %2$s MB</string>
+    <!-- share -->
+    <string name="share_file">文件</string>
+    <string name="share_image">图片</string>
+    <string name="share_video">视频</string>
+    <string name="share_audio">音频</string>
+    <string name="share_text">文本</string>
+    <!-- tile -->
+    <string name="tile_new_chat_label">新对话</string>
+</resources>

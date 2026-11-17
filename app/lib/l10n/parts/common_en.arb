@@ -1,0 +1,22 @@
+{
+  "commonCancel": "Cancel",
+  "commonRetry": "Retry",
+  "commonClose": "Close",
+  "commonBack": "Back",
+  "commonCopy": "Copy",
+  "commonDelete": "Delete",
+  "commonInstall": "Install",
+  "commonShare": "Share",
+  "commonCollapse": "Show less",
+  "commonDetails": "Details",
+  "commonContinue": "Continue",
+  "commonStorageFull": "Not enough storage",
+  "commonConnectionFailed": "Couldn’t connect",
+  "commonUntitledChat": "Untitled chat",
+  "commonThisPhone": "This phone",
+  "commonStopped": "Stopped",
+  "commonRunning": "Running",
+  "commonStopping": "Stopping",
+  "commonViewLogs": "View logs",
+  "commonMonthDay": "{month, select, 1{Jan} 2{Feb} 3{Mar} 4{Apr} 5{May} 6{Jun} 7{Jul} 8{Aug} 9{Sep} 10{Oct} 11{Nov} 12{Dec} other{{month}}} {day}"
+}

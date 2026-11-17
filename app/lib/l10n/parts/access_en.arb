@@ -1,0 +1,46 @@
+{
+  "@@locale": "en",
+  "accessRootPermissions": "Local permissions and Root",
+  "accessRootDone": "Done",
+  "accessFeatureFiles": "Read and write phone files",
+  "accessFeatureFilesNeeds": "Needs file access",
+  "accessFeatureBackground": "Keep running in background",
+  "accessFeatureBackgroundNeeds": "Tells you when tasks finish; needs notifications and background access",
+  "accessTurnOn": "Turn on",
+  "accessViewSettings": "View settings",
+  "accessConfirmEnabled": "I've enabled it",
+  "accessStateConfirmed": "Confirmed enabled",
+  "accessOpenFailed": "Couldn't open system settings",
+  "accessStorageTitle": "Allow file access",
+  "accessStorageWhy": "Lets AI read and write photos, downloads and documents",
+  "accessNotifyTitle": "Allow notifications",
+  "accessNotifyWhy": "Tells you when a task finishes or needs you",
+  "accessBatteryTitle": "Allow background running",
+  "accessBatteryWhy": "Tasks keep going when you switch apps",
+  "accessVendorBackgroundWhy": "Keeps the system from cutting tasks off in the background",
+  "accessAutostartTitle": "Allow auto-start",
+  "accessAutostartWhy": "Lets DeepSeek harness come back after the system clears it",
+  "accessVivoAutostartPath": "Permission management › Auto-start › {app}",
+  "@accessVivoAutostartPath": {
+    "placeholders": {
+      "app": {
+        "type": "String"
+      }
+    }
+  },
+  "accessXiaomiAutostartPath": "Manage apps › {app} › Autostart",
+  "@accessXiaomiAutostartPath": {
+    "placeholders": {
+      "app": {
+        "type": "String"
+      }
+    }
+  },
+  "accessStateOn": "On",
+  "accessStateOff": "Off",
+  "accessStateVisited": "Visited",
+  "accessStateUnknown": "Set up",
+  "accessFinishFailed": "Couldn’t finish setup",
+  "accessPageTitle": "System permissions",
+  "accessPageSubtitle": "What each feature needs from Android"
+}

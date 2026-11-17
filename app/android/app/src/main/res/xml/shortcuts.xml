@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Long-press on the launcher icon: 新对话 (static), then up to three recent conversations
+     (dynamic, shortcuts/ShortcutsPlugin.kt). All go through the non-exported shortcuts/EntryActivity;
+     launchers start shortcuts as this app, so it needs no export. targetPackage is the applicationId. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="new_chat"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_new_chat"
+        android:shortcutShortLabel="@string/shortcut_new_chat"
+        android:shortcutLongLabel="@string/shortcut_new_chat">
+        <intent
+            android:action="app.dsh.action.NEW_CHAT"
+            android:targetClass="app.dsh.shortcuts.EntryActivity"
+            android:targetPackage="app.dsh" />
+    </shortcut>
+</shortcuts>

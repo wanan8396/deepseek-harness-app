@@ -1,0 +1,559 @@
+{
+  "@@locale": "zh",
+  "accessRootPermissions": "本机权限与 Root",
+  "accessRootDone": "完成",
+  "accessFeatureFiles": "读写手机里的文件",
+  "accessFeatureFilesNeeds": "需要文件访问权限",
+  "accessFeatureBackground": "后台持续运行",
+  "accessFeatureBackgroundNeeds": "任务跑完通知你，需要通知和后台权限",
+  "accessTurnOn": "去开启",
+  "accessViewSettings": "查看设置",
+  "accessConfirmEnabled": "我已开启",
+  "accessStateConfirmed": "已确认开启",
+  "accessOpenFailed": "没能打开系统设置",
+  "accessStorageTitle": "允许访问文件",
+  "accessStorageWhy": "让 AI 读写相册、下载和文档",
+  "accessNotifyTitle": "允许通知",
+  "accessNotifyWhy": "任务跑完、需要确认时提醒你",
+  "accessBatteryTitle": "允许在后台运行",
+  "accessBatteryWhy": "切到别的 App 时任务照常跑",
+  "accessVendorBackgroundWhy": "锁屏或切走后，不被系统断网、清理",
+  "accessAutostartTitle": "允许自启动",
+  "accessAutostartWhy": "被系统清理后能自己恢复",
+  "accessVivoAutostartPath": "权限管理 › 自启动 › {app}",
+  "@accessVivoAutostartPath": {
+    "placeholders": {
+      "app": {
+        "type": "String"
+      }
+    }
+  },
+  "accessXiaomiAutostartPath": "应用管理 › {app} › 自启动",
+  "@accessXiaomiAutostartPath": {
+    "placeholders": {
+      "app": {
+        "type": "String"
+      }
+    }
+  },
+  "accessStateOn": "已开启",
+  "accessStateOff": "未开启",
+  "accessStateVisited": "已去设置",
+  "accessStateUnknown": "去设置",
+  "accessFinishFailed": "没能完成设置",
+  "accessPageTitle": "系统权限",
+  "accessPageSubtitle": "各项功能用到的系统权限",
+  "botsDiscardTitle": "放弃修改？",
+  "botsKeepEditing": "继续编辑",
+  "botsDiscard": "放弃",
+  "botsProgress": "进度",
+  "chatErrReasoningEffortUnsupported": "当前模型不支持此推理档位，请调整档位或换模型",
+  "chatComposerHint": "给 DSH 发消息…",
+  "chatErrApiKey": "API Key 无效或已过期",
+  "chatErrBalance": "余额不足",
+  "chatErrAccountQuota": "账号额度已用完",
+  "chatErrRateLimit": "请求太频繁，稍后再试",
+  "chatErrContextLength": "对话太长，发送 /compact 压缩后再试",
+  "chatErrModelUnavailable": "模型服务暂时不可用",
+  "chatErrModelTimeout": "模型响应超时",
+  "chatErrModelConnection": "没能连上模型服务",
+  "chatErrModelEmpty": "模型没有返回内容",
+  "chatErrEngineOutdated": "这个模型需要新版引擎",
+  "chatErrModelUnsupported": "当前模型不可用",
+  "chatErrTurn": "本轮出错了",
+  "commonCancel": "取消",
+  "commonRetry": "重试",
+  "commonClose": "关闭",
+  "commonBack": "返回",
+  "commonCopy": "复制",
+  "commonDelete": "删除",
+  "commonInstall": "安装",
+  "commonShare": "分享",
+  "commonCollapse": "收起",
+  "commonDetails": "详情",
+  "commonContinue": "继续",
+  "commonStorageFull": "存储空间不足",
+  "commonConnectionFailed": "连接失败",
+  "commonUntitledChat": "未命名对话",
+  "commonThisPhone": "本机",
+  "commonStopped": "已停止",
+  "commonRunning": "运行中",
+  "commonStopping": "正在停止",
+  "commonViewLogs": "查看日志",
+  "commonMonthDay": "{month}月{day}日",
+  "@commonMonthDay": {
+    "description": "Short date (month 1–12).",
+    "placeholders": {
+      "month": {
+        "type": "String"
+      },
+      "day": {
+        "type": "int"
+      }
+    }
+  },
+  "companionVoice": "语音",
+  "featuresScheduleRunLocation": "在哪里运行",
+  "fileSharedText": "分享的文字.txt",
+  "localEnvThisPhoneDetail": "存储约 {storage} MB · 内存约 {memory} MB",
+  "@localEnvThisPhoneDetail": {
+    "placeholders": {
+      "storage": {
+        "type": "int"
+      },
+      "memory": {
+        "type": "int"
+      }
+    }
+  },
+  "localEnvThisPhoneDetailShort": "内存约 {memory} MB",
+  "@localEnvThisPhoneDetailShort": {
+    "placeholders": {
+      "memory": {
+        "type": "int"
+      }
+    }
+  },
+  "localEnvLowStorage": "存储空间不足，需要约 {needed} MB",
+  "@localEnvLowStorage": {
+    "placeholders": {
+      "needed": {
+        "type": "int"
+      }
+    }
+  },
+  "localEnvRemoteDetail": "连接电脑或服务器上的 DSH",
+  "localEnvInstallTitle": "安装本机运行环境",
+  "localEnvInstallMessage": "在这台手机上运行 DSH",
+  "localEnvFactStorage": "约 {storage} MB 存储空间",
+  "@localEnvFactStorage": {
+    "placeholders": {
+      "storage": {
+        "type": "int"
+      }
+    }
+  },
+  "localEnvFactMemory": "运行时约 {memory} MB 内存",
+  "@localEnvFactMemory": {
+    "placeholders": {
+      "memory": {
+        "type": "int"
+      }
+    }
+  },
+  "localEnvNotInstalled": "本机未安装运行环境",
+  "mediaVary": "变体",
+  "mediaEdit": "编辑",
+  "mediaUpscale": "放大",
+  "phoneDiagnosticsCollecting": "正在收集…",
+  "phoneDiagnosticsPacking": "正在打包…",
+  "phoneDiagnosticsSharing": "正在打开分享…",
+  "phoneDiagnosticsSaving": "正在存到「下载」…",
+  "phoneDiagnosticsShare": "分享诊断包",
+  "phoneDiagnosticsShareHint": "附在问题反馈里",
+  "phoneDiagnosticsSave": "存到「下载」",
+  "phoneDiagnosticsSaveHint": "存进 下载/DeepSeek-harness",
+  "phoneDiagnosticsNote": "含版本、设备、日志和最近一次崩溃，不含 Key 和令牌",
+  "phoneDiagnosticsExport": "导出诊断包",
+  "phoneSafeMode": "安全模式",
+  "phoneEngineInstallRuntime": "安装运行环境",
+  "phoneEngineNotInstalled": "未安装",
+  "phoneEngineInstalling": "正在安装",
+  "phoneEngineStoppedSafe": "已停止 · 安全模式",
+  "phoneEngineStartingSafe": "正在以安全模式启动",
+  "phoneEngineStarting": "正在启动",
+  "phoneEngineRunningProbation": "运行中 · 试用",
+  "phoneEngineStartupFailed": "启动失败",
+  "phoneEngineCrashed": "已崩溃",
+  "phoneEngineKilled": "被系统结束",
+  "phoneEngineError": "出错了",
+  "phoneEngineRuntimeCorrupt": "App 内的运行环境包已损坏，请重新安装 App",
+  "phoneEngineExited": "引擎意外退出了",
+  "phoneEngineRuntimeMissing": "运行环境还没有安装",
+  "phoneEngineSafeUnsupported": "这个版本的运行环境不支持安全模式，请更新 App",
+  "phoneEngineRuntimeIncomplete": "App 内的运行环境包不完整，请重新安装 App",
+  "phoneLogEmpty": "还没有日志",
+  "phoneLogShareTitle": "DSH 引擎日志",
+  "phoneLogCopyAll": "复制全部",
+  "phoneFailureLaunch": "本机运行环境未能启动",
+  "phoneAccentMist": "雾蓝",
+  "phoneAccentDaiqing": "黛青",
+  "phoneAccentDusk": "暮紫",
+  "phoneAccentTurquoise": "松石",
+  "phoneAccentAmber": "琥珀",
+  "phoneAccentGraphite": "石墨",
+  "phoneAccentCustom": "自定义",
+  "phoneEngineInstallPercent": "正在安装 · {percent}%",
+  "@phoneEngineInstallPercent": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "phoneEngineStatusSemantics": "{prefix}引擎：{status}",
+  "@phoneEngineStatusSemantics": {
+    "placeholders": {
+      "prefix": {
+        "type": "String"
+      },
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "phoneLogLineCount": "{count} 行",
+  "@phoneLogLineCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "phoneLogCopiedLines": "已复制 {count} 行",
+  "@phoneLogCopiedLines": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "phoneEngineStorageDetails": "存储空间不足：需要约 {needed} MB，当前可用 {free} MB",
+  "@phoneEngineStorageDetails": {
+    "placeholders": {
+      "needed": {
+        "type": "String"
+      },
+      "free": {
+        "type": "String"
+      }
+    }
+  },
+  "pluginsAllowHighPower": "允许后台高耗电",
+  "pluginsVivoBatteryPath": "电池 › 后台耗电管理 › {app}",
+  "@pluginsVivoBatteryPath": {
+    "placeholders": {
+      "app": {
+        "type": "String"
+      }
+    }
+  },
+  "pluginsXiaomiBatterySetting": "省电策略：无限制",
+  "pluginsXiaomiBatteryPath": "应用管理 › {app} › 省电策略",
+  "@pluginsXiaomiBatteryPath": {
+    "placeholders": {
+      "app": {
+        "type": "String"
+      }
+    }
+  },
+  "pluginsHuaweiBatterySetting": "允许后台活动",
+  "pluginsHuaweiBatteryPath": "电池 › 应用启动管理 › {app}",
+  "@pluginsHuaweiBatteryPath": {
+    "placeholders": {
+      "app": {
+        "type": "String"
+      }
+    }
+  },
+  "pluginsOppoBatterySetting": "允许后台行为",
+  "pluginsOppoBatteryPath": "电池 › 应用耗电管理 › {app}",
+  "@pluginsOppoBatteryPath": {
+    "placeholders": {
+      "app": {
+        "type": "String"
+      }
+    }
+  },
+  "pluginsQrCode": "二维码",
+  "remoteConnectComputer": "连接电脑或服务器",
+  "remoteServerAddress": "服务器地址",
+  "remoteHost": "主机",
+  "remoteDirectoryRecent": "最近",
+  "remotePairCameraFailed": "相机打不开。可以用「从相册识别」或「粘贴配对链接」",
+  "remotePairConfirmTitle": "要连接这台电脑吗？",
+  "remotePairComputer": "电脑",
+  "phoneRuntimeUpgradeBase": "新引擎与现有 Linux 环境不能确认兼容，更新已停止。原环境和已装工具没有删除。请先完整备份，再联系维护者迁移；不要直接重置或卸载 App。",
+  "phoneRuntimeUpgradeManifest": "无法安全识别运行时更新清单，更新已停止，原环境保留。请核对安装包并联系维护者，不要直接重置。",
+  "phoneRuntimeUpgradeInterrupted": "运行时升级尚未完成，数据与恢复现场已保留。请重试安装；仍失败时导出诊断并联系维护者，不要重置或删除恢复目录。",
+  "phoneRuntimeUpgradeSymlink": "现有环境的系统路径已被自定义链接替换，无法安全更新。原环境保留，请先备份并联系维护者处理。",
+  "phoneRuntimeUpgradeRunning": "引擎或遗留进程尚未确认停止，更新未开始。请先停止本机引擎，等待清理完成后重试；不要重置环境。",
+  "setupCapsulePreparing": "准备运行环境",
+  "setupCapsuleProgress": "运行环境 {percent}%",
+  "@setupCapsuleProgress": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "setupCapsuleProgressSemantics": "正在准备运行环境，已完成 {percent}%",
+  "@setupCapsuleProgressSemantics": {
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "setupCapsuleReady": "运行环境已就绪",
+  "setupCapsuleFailed": "安装未完成",
+  "setupWaitingBody": "完成后自动进入",
+  "setupNotifyWhenDone": "完成时会通知你",
+  "shellOnboardingStep": "第 {step} 步，共 {steps} 步",
+  "@shellOnboardingStep": {
+    "placeholders": {
+      "step": {
+        "type": "int"
+      },
+      "steps": {
+        "type": "int"
+      }
+    }
+  },
+  "shellRuntimeUpdating": "正在更新运行环境",
+  "shellRuntimePreparing": "正在准备运行环境",
+  "shellRuntimeReady": "准备就绪",
+  "shellRuntimeIncomplete": "安装未完成",
+  "shellRuntimeFilesKept": "对话和文件都会保留",
+  "shellRuntimeFirstSetup": "首次准备约需一两分钟",
+  "shellRuntimeContinuing": "即将继续",
+  "shellRuntimeRestoreFailed": "没能放回保留的内容",
+  "shellRuntimeExtractFailed": "解压时出错",
+  "shellInstallLogs": "安装日志",
+  "shellRuntimeLocalOnly": "全程在本机完成",
+  "shellRuntimeContinueWithoutKept": "不保留，继续安装",
+  "shellRuntimeAlmostDone": "马上就好",
+  "shellRuntimeSecondsRemaining": "约 {count} 秒",
+  "@shellRuntimeSecondsRemaining": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "shellRuntimeMinutesRemaining": "约 {count} 分钟",
+  "@shellRuntimeMinutesRemaining": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "shellEngineLogs": "引擎日志",
+  "shellWelcomeMessage": "把 DeepSeek 智能体\n装进口袋",
+  "shellGetStarted": "开始",
+  "phoneStartupFailureStopping": "启动失败，正在停止",
+  "phoneStartupTokenTimeout": "启动等待已超时（180 秒内未收到启动标记），请查看日志",
+  "phoneStartupPortNotReady": "已收到启动标记，但本机服务端口尚未就绪，请查看日志",
+  "stateDiagnosticsSubject": "DeepSeek harness 诊断包",
+  "stateStoragePermission": "没有存储权限，存不进「下载」",
+  "stateDiagnosticsStorageFull": "存储空间不足，没能生成诊断包",
+  "stateDiagnosticsExportFailed": "没能导出诊断包",
+  "stateFileOpenFailed": "无法打开这个文件",
+  "stateLinkOpenFailed": "无法打开这个链接",
+  "stateAlertPublicDone": "有一轮完成了",
+  "stateAlertPublicFailed": "有一轮出错了",
+  "stateAlertPublicStopped": "有一轮停下了",
+  "stateAlertPublicApproval": "有一步等你确认",
+  "stateAlertPublicQuestion": "有个问题等你回答",
+  "stateAlertTurnDone": "这一轮已完成",
+  "stateAlertOutputLimit": "已结束 · 达到单次输出长度上限",
+  "stateAlertTurnBlocked": "这一轮被拦截了",
+  "stateAlertEngineRestarted": "已中断 · 引擎重启过",
+  "stateAlertMissingKey": "出错了 · 还没有配置密钥",
+  "stateAlertTurnFailed": "这一轮出错了",
+  "stateRunCommand": "运行命令",
+  "stateWriteFile": "写入文件",
+  "stateEditFile": "修改文件",
+  "stateOpenPage": "打开网页",
+  "stateWebSearch": "联网搜索",
+  "stateAlertQuestion": "问你一个问题",
+  "stateWallpaper": "壁纸",
+  "stateShareFileTooLarge": "有文件太大，未添加",
+  "stateShareFileUnreadable": "有文件没能读取",
+  "stateProviderUrlInvalid": "以 http:// 或 https:// 开头的完整地址",
+  "stateDiagnosticsSaved": "已存到 {where}",
+  "@stateDiagnosticsSaved": {
+    "placeholders": {
+      "where": {
+        "type": "String"
+      }
+    }
+  },
+  "stateDownloadsPrefix": "下载/",
+  "stateAlertCompletedReply": "已完成 · {reply}",
+  "@stateAlertCompletedReply": {
+    "placeholders": {
+      "reply": {
+        "type": "String"
+      }
+    }
+  },
+  "stateAlertErrorDetail": "出错了 · {detail}",
+  "@stateAlertErrorDetail": {
+    "placeholders": {
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
+  "stateAlertUseTool": "使用工具 {name}",
+  "@stateAlertUseTool": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "stateAlertApprovalAction": "等你确认：{action}",
+  "@stateAlertApprovalAction": {
+    "placeholders": {
+      "action": {
+        "type": "String"
+      }
+    }
+  },
+  "stateAlertApprovalReason": "等你确认：{action} · {reason}",
+  "@stateAlertApprovalReason": {
+    "placeholders": {
+      "action": {
+        "type": "String"
+      },
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "stateAlertQuestions": "问你：{question}（共 {count} 个）",
+  "@stateAlertQuestions": {
+    "placeholders": {
+      "question": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "stateAlertQuestionText": "问你：{question}",
+  "@stateAlertQuestionText": {
+    "placeholders": {
+      "question": {
+        "type": "String"
+      }
+    }
+  },
+  "stateAttachmentEmpty": "「{name}」是空文件",
+  "@stateAttachmentEmpty": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "stateAttachmentImageLimit": "图片「{name}」超过 20 MB",
+  "@stateAttachmentImageLimit": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "stateAttachmentFileLimit": "文件「{name}」超过 200 MB",
+  "@stateAttachmentFileLimit": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "stateAttachmentTotalLimit": "附件总大小超过 400 MB",
+  "stateShareReadFailed": "没能读取「{name}」",
+  "@stateShareReadFailed": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "stateShareAttachmentLimit": "每条消息最多 {count} 个附件",
+  "@stateShareAttachmentLimit": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "stateShareNamedFileTooLarge": "「{name}」太大，未添加",
+  "@stateShareNamedFileTooLarge": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "stateAlertPreviewRun": "运行：{value}",
+  "@stateAlertPreviewRun": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "stateAlertPreviewWrite": "写入：{value}",
+  "@stateAlertPreviewWrite": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "stateAlertPreviewEdit": "修改：{value}",
+  "@stateAlertPreviewEdit": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "stateAlertPreviewOpen": "打开：{value}",
+  "@stateAlertPreviewOpen": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "stateAlertPreviewUse": "使用工具：{value}",
+  "@stateAlertPreviewUse": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "webConfigDocumentTitle": "配置文件",
+  "webConfigDocumentReadOnly": "只读 · 当前运行配置",
+  "webConfigDocumentReadFailed": "配置文件没有打开，请确认本机引擎仍在运行后重试。",
+  "localWebExploreBeyond": "探索未至之境",
+  "webComputerCheckConnection": "检查手机与电脑的网络连接，并确认电脑网页服务已开启",
+  "webTitle": "DSH 网页版",
+  "webLocalAppOnly": "本机地址带启动令牌，只能在 App 内打开",
+  "webEngineStartFailed": "引擎没能启动",
+  "webAttachmentTooLarge": "附件太大，没能带进网页版",
+  "webTextCopied": "文字已复制，粘贴到输入框即可",
+  "webAttachmentFailed": "附件没能带进网页版",
+  "webPageClosed": "网页已关闭",
+  "webChatsWorkspaces": "对话与工作区",
+  "webRefresh": "刷新",
+  "webOpenInBrowser": "在浏览器打开",
+  "webBrowserUnavailable": "不能在浏览器打开",
+  "webReopen": "重新打开",
+  "webPageNotOpened": "页面没有打开",
+  "webCheckConnection": "检查网络或引擎状态后再试",
+  "webTargetSessionMissing": "网页版里没找到这个对话，已停在首页",
+  "webTargetNotLoaded": "网页版没有加载完成",
+  "webTargetSettingsMissing": "没找到这页设置，可能需要先登录或开启对应插件",
+  "webTargetNewChatFailed": "没能新建对话，已停在网页版首页",
+  "webTargetPageFailed": "没能直接打开这一页，已停在网页版首页"
+}

@@ -1,0 +1,5 @@
+{
+  "phoneStartupFailureStopping": "Startup failed; stopping",
+  "phoneStartupTokenTimeout": "Startup timed out: no startup token arrived within 180 seconds. Check the logs.",
+  "phoneStartupPortNotReady": "The startup token arrived, but the local service port did not become ready. Check the logs."
+}

@@ -1,0 +1,10 @@
+{
+  "source": "User-provided deepseek HARNESS wordmark",
+  "sourceSize": [
+    245,
+    35
+  ],
+  "sourceSha256": "c94cfaef084d092ceaee1cdeff2ecee57dd979bab9dc893dae72864dd5aba89f",
+  "method": "Extract antialiased ink and whale mark; adapt into monochrome light/dark and Android density-specific resources.",
+  "note": "Derived from the supplied low-resolution image; not claimed as original vector artwork."
+}

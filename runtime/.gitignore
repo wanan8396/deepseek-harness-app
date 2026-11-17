@@ -1,0 +1,6 @@
+# Downloads, staging trees and official builder output (see README.official.md).
+.cache/
+.work/
+out/
+*.log
+__pycache__/

@@ -1,0 +1,33 @@
+{
+  "commonCancel": "取消",
+  "commonRetry": "重试",
+  "commonClose": "关闭",
+  "commonBack": "返回",
+  "commonCopy": "复制",
+  "commonDelete": "删除",
+  "commonInstall": "安装",
+  "commonShare": "分享",
+  "commonCollapse": "收起",
+  "commonDetails": "详情",
+  "commonContinue": "继续",
+  "commonStorageFull": "存储空间不足",
+  "commonConnectionFailed": "连接失败",
+  "commonUntitledChat": "未命名对话",
+  "commonThisPhone": "本机",
+  "commonStopped": "已停止",
+  "commonRunning": "运行中",
+  "commonStopping": "正在停止",
+  "commonViewLogs": "查看日志",
+  "commonMonthDay": "{month}月{day}日",
+  "@commonMonthDay": {
+    "description": "Short date (month 1–12).",
+    "placeholders": {
+      "month": {
+        "type": "String"
+      },
+      "day": {
+        "type": "int"
+      }
+    }
+  }
+}

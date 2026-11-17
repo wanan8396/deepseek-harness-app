@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Explicit HTTP(S) computer connections, including QR-provided LAN addresses.
+     Android cannot express dynamic private-IP ranges here. TLS uses platform trust;
+     the shell does not install custom CAs or bypass certificate verification. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

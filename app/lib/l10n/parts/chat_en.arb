@@ -1,0 +1,16 @@
+{
+  "chatErrReasoningEffortUnsupported": "This model does not support the selected reasoning effort. Change the effort or model.",
+  "chatComposerHint": "Message DSH…",
+  "chatErrApiKey": "API key is invalid or expired",
+  "chatErrBalance": "Insufficient balance",
+  "chatErrAccountQuota": "Account quota used up",
+  "chatErrRateLimit": "Too many requests. Try again later.",
+  "chatErrContextLength": "Chat too long. Send /compact, then try again.",
+  "chatErrModelUnavailable": "Model service temporarily unavailable",
+  "chatErrModelTimeout": "Model response timed out",
+  "chatErrModelConnection": "Couldn’t reach the model service",
+  "chatErrModelEmpty": "The model returned no content",
+  "chatErrEngineOutdated": "This model needs a newer engine",
+  "chatErrModelUnsupported": "This model isn’t available",
+  "chatErrTurn": "Something went wrong this turn"
+}
