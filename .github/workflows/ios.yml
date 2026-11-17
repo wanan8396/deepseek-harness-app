@@ -11,7 +11,7 @@ concurrency:
 jobs:
   ios:
     name: iPhone and iPad embedded runtime
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 50
     env:
       FLUTTER_VERSION: 3.47.7
