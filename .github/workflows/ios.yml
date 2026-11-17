@@ -64,7 +64,9 @@ jobs:
         run: flutter test --no-pub test/ios
       - name: Build iOS Simulator application
         working-directory: app
-        run: flutter build ios --simulator --debug --no-pub --build-name 0.2.2 --build-number "$GITHUB_RUN_NUMBER"
+        run: |
+          set -o pipefail
+          flutter build ios --simulator --debug --no-pub --build-name 0.2.2 --build-number "$GITHUB_RUN_NUMBER" -v 2>&1 | tee "$RUNNER_TEMP/ios-simulator-build.log"
       - name: Verify Simulator artifact
         run: python3 tooling/verify_ios_build.py app/build/ios/iphonesimulator/Runner.app --simulator --output dist/ios/simulator-verification.json
       - name: Execute Node inside actual iOS Simulator
@@ -106,5 +108,7 @@ jobs:
             runtime/.cache/ios/*report*.json
             ${{ runner.temp }}/ios-node-probe.xcresult
             ${{ runner.temp }}/ios-node-probe.log
+            ${{ runner.temp }}/ios-simulator-build.log
+            app/ios/Pods/Target Support Files/DshEmbeddedNode/
           if-no-files-found: warn
           retention-days: 7

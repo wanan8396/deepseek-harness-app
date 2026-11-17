@@ -14,5 +14,10 @@ Pod::Spec.new do |s|
   s.vendored_frameworks = 'Vendor/NodeMobile.xcframework'
   s.resources = 'Resources/*'
   s.swift_version = '5.0'
-  s.pod_target_xcconfig = { 'CLANG_CXX_LANGUAGE_STANDARD' => 'c++17', 'DEFINES_MODULE' => 'YES' }
+  s.pod_target_xcconfig = {
+    'CLANG_CXX_LANGUAGE_STANDARD' => 'c++17',
+    'DEFINES_MODULE' => 'YES',
+    'FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*]' => '$(inherited) "$(PODS_TARGET_SRCROOT)/Vendor/NodeMobile.xcframework/ios-arm64-simulator"',
+    'FRAMEWORK_SEARCH_PATHS[sdk=iphoneos*]' => '$(inherited) "$(PODS_TARGET_SRCROOT)/Vendor/NodeMobile.xcframework/ios-arm64"'
+  }
 end
