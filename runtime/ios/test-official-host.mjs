@@ -1,16 +1,13 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { copyFile, mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { Server, Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { createOfficialHost } from './official-host.mjs';
+import { pathToFileURL } from 'node:url';
 
 const seed = resolve(process.argv[2]);
-// Match the embedded bundle layout. Copy only this reviewed adapter from the
-// already-exported persistence bundle; third-party imports resolve in the seed.
-await copyFile(join(resolve(process.argv[3]), 'sqlite-session-persistence.mjs'),
-  join(seed, 'sqlite-session-persistence.mjs'));
+const { createOfficialHost } = await import(pathToFileURL(join(seed, 'official-host.mjs')).href);
 
 async function rpc(host, method, args) {
   const rpcId = randomUUID();

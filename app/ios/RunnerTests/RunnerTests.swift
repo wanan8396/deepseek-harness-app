@@ -31,6 +31,9 @@ final class RunnerTests: XCTestCase {
     let script = directory.appendingPathComponent("chat-ci-entry.cjs").path
     try FileManager.default.copyItem(at: testFile, to: URL(fileURLWithPath: script))
     try probe.write(to: directory.appendingPathComponent("probe-path.txt"), atomically: true, encoding: .utf8)
+    let hostBundle = Bundle(for: Self.self).bundleURL.appendingPathComponent("dsh-official-host-ci", isDirectory: true)
+    XCTAssertTrue(FileManager.default.fileExists(atPath: hostBundle.appendingPathComponent("official-host.mjs").path))
+    try hostBundle.path.write(to: directory.appendingPathComponent("official-host-path.txt"), atomically: true, encoding: .utf8)
     let output = directory.appendingPathComponent(UUID().uuidString.lowercased() + ".json")
     let mailbox = try IosChatMailbox(reportURL: output)
     XCTAssertTrue(DshEmbeddedNode.startProbe(atPath: script, reportPath: output.path) { code in
@@ -160,6 +163,93 @@ final class RunnerTests: XCTestCase {
     evidence.name = "embedded-ios-chat-verification.json"
     evidence.lifetime = .keepAlways
     add(evidence)
+
+    let webFinished = expectation(description: "WebKit reached the embedded official session Host")
+    Task { @MainActor in
+      defer { webFinished.fulfill() }
+      do { try await verifyOfficialWebSessionRPC(directory) }
+      catch { XCTFail("Official WebKit session RPC: \(error)") }
+    }
+    wait(for: [webFinished], timeout: 45)
+  }
+
+  @MainActor
+  private func verifyOfficialWebSessionRPC(_ directory: URL) async throws {
+    let requestURL = directory.appendingPathComponent("official-rpc-request.json")
+    let replyURL = directory.appendingPathComponent("official-rpc-response.json")
+    let errorURL = directory.appendingPathComponent("official-host-ci-error")
+    let script = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "official-web-bridge", withExtension: "js"))
+    let bridge = IosOfficialWebBridge.ciFixture(schemeHandler: IosOfficialWebAssets(),
+      documentStartScript: try String(contentsOf: script, encoding: .utf8)) { operation, _ in
+      switch operation {
+      case .request(let request):
+        let body = try XCTUnwrap(request.body.flatMap { String(data: $0, encoding: .utf8) })
+        try JSONSerialization.data(withJSONObject: ["path": request.pathAndQuery, "body": body])
+          .write(to: requestURL, options: .atomic)
+        let deadline = ProcessInfo.processInfo.systemUptime + 8
+        while ProcessInfo.processInfo.systemUptime < deadline {
+          if let failure = try? String(contentsOf: errorURL, encoding: .utf8) {
+            throw NSError(domain: "OfficialHostCI", code: 1, userInfo: [NSLocalizedDescriptionKey: failure])
+          }
+          if let data = try? Data(contentsOf: replyURL) {
+            try FileManager.default.removeItem(at: replyURL)
+            let result = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            let status = try XCTUnwrap(result["status"] as? Int)
+            let body = try XCTUnwrap(result["body"] as? String)
+            return .response(.init(status: status,
+              headers: [.init(name: "content-type", value: "application/json")], body: Data(body.utf8)))
+          }
+          try await Task.sleep(for: .milliseconds(25))
+        }
+        throw URLError(.timedOut)
+      }
+    }
+    defer {
+      bridge.invalidate()
+      try? Data(#"{"stop":true}"#.utf8).write(to: requestURL, options: .atomic)
+    }
+    bridge.load()
+    let deadline = ProcessInfo.processInfo.systemUptime + 10
+    while !bridge.isReady && ProcessInfo.processInfo.systemUptime < deadline {
+      try await Task.sleep(for: .milliseconds(25))
+    }
+    try XCTUnwrap(bridge.isReady ? true : nil)
+    let raw = try await bridge.webView.callAsyncJavaScript("""
+      let count = 0;
+      async function rpc(method, args) {
+        const rpcId = 'ios-web-test-' + ++count;
+        const response = await window.__DSH_TRANSPORT__.fetch('api/' + method, {
+          method: 'POST', headers: {'content-type': 'application/json'},
+          body: JSON.stringify({type: 'client-request', rpcId, method, payload: {args}}),
+        });
+        if (!response.ok) throw new Error(method + ': HTTP ' + response.status);
+        const reply = await response.json();
+        if (reply.type !== 'server-response' || reply.rpcId !== rpcId || !reply.result?.ok) {
+          throw new Error(method + ': ' + JSON.stringify(reply.result));
+        }
+        return reply.result.value;
+      }
+      const first = await rpc('session/create', {request: {}});
+      const second = await rpc('session/create', {request: {}});
+      const list = await rpc('session/list', {_request: {}});
+      return { ids: [first.sessionId, second.sessionId], listed: list.items.map(x => x.sessionId) };
+      """, arguments: [:], in: nil, contentWorld: .page)
+    let result = try XCTUnwrap(raw as? [String: Any])
+    let ids = try XCTUnwrap(result["ids"] as? [String])
+    let listed = try XCTUnwrap(result["listed"] as? [String])
+    XCTAssertEqual(ids.count, 2)
+    XCTAssertEqual(Set(ids).count, 2)
+    XCTAssertEqual(Set(listed), Set(ids))
+    XCTAssertTrue(FileManager.default.fileExists(atPath: directory.appendingPathComponent("OfficialHostCI/sessions/sessions.sqlite").path))
+    let report = try JSONSerialization.data(withJSONObject: [
+      "webKitToEmbeddedOfficialSessionRpcVerified": true, "sessionsCreated": ids.count,
+      "sqlitePresent": true, "usesLocalTCP": false, "officialUIReady": false,
+      "stage": "ci-only-unary-session-transport",
+    ])
+    let attachment = XCTAttachment(data: report, uniformTypeIdentifier: "public.json")
+    attachment.name = "official-web-embedded-session-rpc.json"
+    attachment.lifetime = .keepAlways
+    add(attachment)
   }
 
   @MainActor

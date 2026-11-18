@@ -204,8 +204,17 @@ if (require.main === module) {
   // XCTest writes the visited App bundle's verified probe path into a private
   // test directory. The fixture lives in RunnerTests, not Runner.app resources.
   installFetchFixture();
-  const probePath = require('node:fs').readFileSync(path.join(__dirname, 'probe-path.txt'), 'utf8');
-  void require(probePath).main(process.argv[2]);
+  const fs = require('node:fs');
+  const probePath = fs.readFileSync(path.join(__dirname, 'probe-path.txt'), 'utf8');
+  const hostPath = fs.readFileSync(path.join(__dirname, 'official-host-path.txt'), 'utf8');
+  const report = process.argv[2];
+  void require(probePath).main(report).then(async () => {
+    const { serveOfficialHostCi } = await import(pathToFileURL(path.join(hostPath, 'official-host-ci-mailbox.mjs')).href);
+    await serveOfficialHostCi(hostPath, report);
+  }).catch(error => {
+    console.error('IOS_OFFICIAL_HOST_CI_ERROR', error);
+    fs.writeFileSync(path.join(__dirname, 'official-host-ci-error'), String(error), { mode: 0o600 });
+  });
 }
 module.exports = { installFetchFixture, key, first, second, cancelled, invalid, output, reasoning, signature, custom, workspace,
   bundled: (root, file) => import(pathToFileURL(path.join(root, file)).href) };

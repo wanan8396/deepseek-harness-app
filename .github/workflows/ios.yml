@@ -50,8 +50,11 @@ jobs:
           node runtime/ios/export-web-bootstrap.mjs --seed "$RUNNER_TEMP/dsh-ios-seed" --output "$RUNNER_TEMP/dsh-ios-web-bootstrap"
           node runtime/ios/test-web-bootstrap.mjs "$RUNNER_TEMP/dsh-ios-seed" "$RUNNER_TEMP/dsh-ios-web-bootstrap"
           tar -czf "$RUNNER_TEMP/dsh-ios-web-bootstrap.tar.gz" -C "$RUNNER_TEMP/dsh-ios-web-bootstrap" .
-      - name: Prove official session RPC and streaming without a listening server
-        run: node runtime/ios/test-official-host.mjs "$RUNNER_TEMP/dsh-ios-seed" "$RUNNER_TEMP/dsh-ios-persistence"
+      - name: Prove official session RPC and streaming from the audited test bundle
+        run: |
+          python3 tooling/prepare_ios_loader.py --seed "$RUNNER_TEMP/dsh-ios-seed" --phase official-host-ci --output "$RUNNER_TEMP/dsh-ios-official-host-ci"
+          node runtime/ios/test-official-host.mjs "$RUNNER_TEMP/dsh-ios-official-host-ci"
+          tar -czf "$RUNNER_TEMP/dsh-ios-official-host-ci.tar.gz" -C "$RUNNER_TEMP/dsh-ios-official-host-ci" .
       - name: Export exact tested runtime bundles for the iOS job
         run: |
           for phase in loader core persistence chat; do
@@ -67,6 +70,7 @@ jobs:
             ${{ runner.temp }}/dsh-ios-chat.tar.gz
             ${{ runner.temp }}/dsh-ios-web-frontend.tar.gz
             ${{ runner.temp }}/dsh-ios-web-bootstrap.tar.gz
+            ${{ runner.temp }}/dsh-ios-official-host-ci.tar.gz
           retention-days: 7
   ios:
     needs: loader
@@ -122,6 +126,9 @@ jobs:
             mkdir -p "$web"
             tar -xzf "$RUNNER_TEMP/ios-loader-input/dsh-ios-$phase.tar.gz" -C "$web"
           done
+          ci="app/ios/RunnerTests/dsh-official-host-ci"
+          mkdir -p "$ci"
+          tar -xzf "$RUNNER_TEMP/ios-loader-input/dsh-ios-official-host-ci.tar.gz" -C "$ci"
       - name: Analyze application
         working-directory: app
         run: flutter analyze --no-pub

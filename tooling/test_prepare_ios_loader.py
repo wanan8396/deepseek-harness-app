@@ -173,6 +173,14 @@ class PrepareIOSLoaderTests(unittest.TestCase):
                 with self.assertRaisesRegex(exporter.ExportError, 'NATIVE_PACKAGE_CONTENT_UNSUPPORTED'):
                     exporter.collect_files(seed, selected)
 
+    def test_locked_tslib_directory_alias_does_not_replace_entry_validation(self):
+        manifest = {'name': 'tslib', 'version': '2.9.1', 'main': 'entry.js', 'exports': {'./': './'}}
+        exporter.validate_entry_targets(manifest, {'entry.js'})
+        with self.assertRaisesRegex(exporter.ExportError, 'RUNTIME_ENTRY_TARGET_MISSING'):
+            exporter.validate_entry_targets(manifest, set())
+        with self.assertRaisesRegex(exporter.ExportError, 'RUNTIME_ENTRY_TARGET_MISSING'):
+            exporter.validate_entry_targets({**manifest, 'version': '2.9.2'}, {'entry.js'})
+
     def test_runtime_exports_preserved_and_development_exports_not_rewritten(self):
         manifest = {'main': './lib/index.js', 'exports': {'.': {'types': './types/index.d.ts',
                     'import': './lib/index.mjs', 'require': './lib/index.cjs'}, './src/*': './src/*',

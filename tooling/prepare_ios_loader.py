@@ -20,6 +20,40 @@ DEFAULT_OUTPUT = ROOT / 'app/ios/EmbeddedNode/Resources/dsh-loader'
 DEFAULT_CORE_OUTPUT = DEFAULT_OUTPUT.with_name('dsh-core')
 DEFAULT_PERSISTENCE_OUTPUT = DEFAULT_OUTPUT.with_name('dsh-persistence')
 DEFAULT_CHAT_OUTPUT = DEFAULT_OUTPUT.with_name('dsh-chat')
+DEFAULT_OFFICIAL_HOST_OUTPUT = ROOT / 'app/ios/RunnerTests/dsh-official-host-ci'
+OFFICIAL_HOST_ENTRY_PACKAGES = (
+    '@deepseek-ai/dsh-agent-default-model', '@deepseek-ai/dsh-api-gateway',
+    '@deepseek-ai/dsh-api-remote-access', '@deepseek-ai/dsh-api-session-controller',
+    '@deepseek-ai/dsh-attachment-local', '@deepseek-ai/dsh-client-connection',
+    '@deepseek-ai/dsh-client-file-upload', '@deepseek-ai/dsh-commands',
+    '@deepseek-ai/dsh-credentials-local', '@deepseek-ai/dsh-fs-local',
+    '@deepseek-ai/dsh-session-query-sqlite', '@deepseek-ai/dsh-storage-json',
+    '@deepseek-ai/dsh-typert-registry',
+)
+# Test-only session Host. Files are still checked for native executable content.
+OFFICIAL_HOST_REVIEWED_PACKAGES = frozenset(OFFICIAL_HOST_ENTRY_PACKAGES) | frozenset({
+    '@babel/code-frame', '@babel/helper-validator-identifier', '@deepseek-ai/cordis-plugin-timer',
+    '@deepseek-ai/dsh-agent-preset-registry', '@deepseek-ai/dsh-chunked-list',
+    '@deepseek-ai/dsh-cmdline', '@deepseek-ai/dsh-compaction', '@deepseek-ai/dsh-compaction-image-offload',
+    '@deepseek-ai/dsh-config-editor', '@deepseek-ai/dsh-credentials', '@deepseek-ai/dsh-deque',
+    '@deepseek-ai/dsh-file-reference', '@deepseek-ai/dsh-hmr', '@deepseek-ai/dsh-http-proxy',
+    '@deepseek-ai/dsh-lazy-require', '@deepseek-ai/dsh-permission-presets', '@deepseek-ai/dsh-sandbox-policy',
+    '@deepseek-ai/dsh-session-format', '@deepseek-ai/dsh-session-format-catalog',
+    '@deepseek-ai/dsh-session-format-v0-to-v1', '@deepseek-ai/dsh-session-format-v1-to-v2',
+    '@deepseek-ai/dsh-session-format-v2-to-v3', '@deepseek-ai/dsh-session-format-v3-to-v4',
+    '@deepseek-ai/dsh-session-projection-cache', '@deepseek-ai/dsh-session-query',
+    '@deepseek-ai/dsh-session-title', '@deepseek-ai/dsh-settings', '@deepseek-ai/dsh-shell',
+    '@deepseek-ai/dsh-skill', '@deepseek-ai/dsh-subagent', '@deepseek-ai/dsh-subprocess',
+    '@deepseek-ai/dsh-tool-todo', '@deepseek-ai/dsh-util-time', '@deepseek-ai/dsh-util-workspace-path',
+    '@deepseek-ai/dsh-working-directory', '@js-temporal/polyfill', 'chokidar', 'js-tokens', 'jsbi',
+    'mime-db', 'mime-types', 'picocolors', 'picomatch', 'readdirp', 'rrule', 'tslib', 'undici', 'ws', 'yaml',
+})
+OFFICIAL_HOST_EXCLUSIONS = {
+    ('dsh-attachment-local', 'sharp'): 'Lazy raster normalization is not exercised or exposed by the CI session seam.',
+    ('dsh-fs-local', 'koffi'): 'Windows-only file operations are not used by this composition.',
+    ('ws', 'bufferutil'): 'Optional WebSocket accelerator; no WebSocket carrier is mounted.',
+    ('ws', 'utf-8-validate'): 'Optional WebSocket accelerator; no WebSocket carrier is mounted.',
+}
 CHECKPOINT_PACKAGE = '@deepseek-ai/dsh-session-checkpoint-policy'
 CHAT_PROVIDER_PACKAGE = '@deepseek-ai/dsh-llm-deepseek'
 ENTRY_PACKAGE = '@deepseek-ai/dsh-app-boot'
@@ -139,9 +173,13 @@ def phase_entry_packages(phase: str) -> tuple[str, ...]:
         return (ENTRY_PACKAGE,)
     if phase == 'core':
         return (ENTRY_PACKAGE, *CORE_ENTRY_PACKAGES)
-    if phase in ('persistence', 'chat'):
+    if phase in ('persistence', 'chat', 'official-host-ci'):
         entries = (ENTRY_PACKAGE, *CORE_ENTRY_PACKAGES, CHECKPOINT_PACKAGE)
-        return (*entries, CHAT_PROVIDER_PACKAGE) if phase == 'chat' else entries
+        if phase == 'chat':
+            return (*entries, CHAT_PROVIDER_PACKAGE)
+        if phase == 'official-host-ci':
+            return (*entries, *OFFICIAL_HOST_ENTRY_PACKAGES)
+        return entries
     raise ExportError('EXPORT_PHASE_INVALID')
 
 
@@ -150,12 +188,19 @@ def dependency_closure(seed: Path, lock: dict, phase: str = 'loader') -> tuple[d
     omitted = []
     queue = [(None, name) for name in phase_entry_packages(phase)]
     reviewed = REVIEWED_PACKAGES if phase == 'loader' else CORE_REVIEWED_PACKAGES
-    if phase in ('persistence', 'chat'):
+    if phase in ('persistence', 'chat', 'official-host-ci'):
         reviewed = reviewed | {CHECKPOINT_PACKAGE}
-    if phase == 'chat':
+    if phase in ('chat', 'official-host-ci'):
         reviewed = reviewed | CHAT_REVIEWED_PACKAGES
+    if phase == 'official-host-ci':
+        reviewed = reviewed | OFFICIAL_HOST_REVIEWED_PACKAGES
     while queue:
         parent, name = queue.pop(0)
+        if phase == 'official-host-ci' and parent is not None:
+            why = OFFICIAL_HOST_EXCLUSIONS.get((parent.name, name))
+            if why is not None:
+                omitted.append({'parent': str(parent), 'package': name, 'reason': why})
+                continue
         if name in EXCLUDED:
             omitted.append({'parent': str(parent), 'package': name, 'reason': EXCLUDED[name]})
             continue
@@ -224,6 +269,10 @@ def validate_entry_targets(manifest: dict, kept: set[str]) -> list:
         if isinstance(target, str):
             targets.append(target)
     for target in targets:
+        # Locked tslib exposes a package-root directory alias as well as its
+        # concrete entry points. The other targets and every kept file are checked.
+        if target == './' and manifest.get('name') == 'tslib' and manifest.get('version') == '2.9.1':
+            continue
         clean = target[2:] if target.startswith('./') else target
         if clean.startswith(('node:', '#')):
             continue
@@ -298,6 +347,7 @@ def prepare(seed: Path, destination: Path, check: bool = False, phase: str = 'lo
         'chat': ('chat-engine.mjs', 'chat-deepseek-provider.mjs', 'chat-mailbox.mjs',
                  'chat-approval.mjs', 'chat-model-channel.mjs', 'chat-workspace-tools.mjs',
                  'sqlite-session-persistence.mjs'),
+        'official-host-ci': ('official-host.mjs', 'official-host-ci-mailbox.mjs', 'sqlite-session-persistence.mjs'),
     }[phase]
     own_files = [ROOT / 'runtime/ios' / name for name in own_names]
     for source in own_files:
@@ -322,6 +372,7 @@ def prepare(seed: Path, destination: Path, check: bool = False, phase: str = 'lo
             'core': ['web-profile', 'model-provider-network', 'concrete-session-persistence'],
             'persistence': ['web-profile', 'model-provider-network', 'official-jsonl-storage', 'chat-transport'],
             'chat': ['web-profile', 'official-jsonl-storage', 'unrestricted-tools', 'attachments', 'remote-engine'],
+            'official-host-ci': ['production-web-ui', 'raster-attachments', 'model-provider-network'],
         }[phase],
         'packages': [{'path': key, 'name': value[1]['name'], 'version': value[0]['version'],
                       'resolved': value[0]['resolved'], 'integrity': value[0]['integrity'],
@@ -361,13 +412,13 @@ def prepare(seed: Path, destination: Path, check: bool = False, phase: str = 'lo
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--seed', type=Path, required=True, help='Independent exact-lock npm ci seed')
-    parser.add_argument('--phase', choices=('loader', 'core', 'persistence', 'chat'), default='loader')
+    parser.add_argument('--phase', choices=('loader', 'core', 'persistence', 'chat', 'official-host-ci'), default='loader')
     parser.add_argument('--output', type=Path, help='Defaults to the phase-specific dsh-* resources directory')
     parser.add_argument('--check', action='store_true', help='Inspect seed and hashes only; write nothing')
     args = parser.parse_args(argv)
     output = args.output if args.output is not None else {
         'loader': DEFAULT_OUTPUT, 'core': DEFAULT_CORE_OUTPUT, 'persistence': DEFAULT_PERSISTENCE_OUTPUT,
-        'chat': DEFAULT_CHAT_OUTPUT,
+        'chat': DEFAULT_CHAT_OUTPUT, 'official-host-ci': DEFAULT_OFFICIAL_HOST_OUTPUT,
     }[args.phase]
     try:
         manifest = prepare(args.seed, output, args.check, args.phase)
