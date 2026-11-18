@@ -17,7 +17,15 @@ const sse = (value) => encoder.encode(`event: ${value.type}\ndata: ${JSON.string
 
 function installFetchFixture() {
   globalThis.fetch = async (url, init) => {
-    assert.equal(String(url), 'https://api.deepseek.com/anthropic/messages');
+    try { return await respond(url, init); }
+    catch (error) {
+      // Debugging output exists only in this unshipped, credential-free test.
+      console.error('IOS_CHAT_CI_HTTP_FIXTURE_FAILED', error.message);
+      throw error;
+    }
+  };
+  async function respond(url, init) {
+    assert.equal(String(url), 'https://api.deepseek.com/anthropic/v1/messages');
     assert.equal(init.method, 'POST');
     assert.equal(init.redirect, 'error');
     const headers = new Headers(init.headers);
@@ -66,7 +74,7 @@ function installFetchFixture() {
       cancel() { dispose(); },
     });
     return new Response(readable, { status: 200, headers: { 'content-type': 'text/event-stream' } });
-  };
+  }
 }
 
 if (require.main === module) {

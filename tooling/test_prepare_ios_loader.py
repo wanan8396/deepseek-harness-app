@@ -72,6 +72,7 @@ class PrepareIOSLoaderTests(unittest.TestCase):
                 ([], 'loader', exporter.DEFAULT_OUTPUT),
                 (['--phase', 'core'], 'core', exporter.DEFAULT_CORE_OUTPUT),
                 (['--phase', 'persistence'], 'persistence', exporter.DEFAULT_PERSISTENCE_OUTPUT),
+                (['--phase', 'chat'], 'chat', exporter.DEFAULT_CHAT_OUTPUT),
                 (['--phase', 'core', '--output', 'custom-core'], 'core', Path('custom-core'))):
             with self.subTest(phase=phase, output=output):
                 manifest = {'distribution': f'ios-adapted-{phase}-probe', 'packages': [],

@@ -1,5 +1,7 @@
 import { Buffer } from 'node:buffer';
-import { chmod, lstat, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { constants } from 'node:fs';
+import { chmod, link, lstat, mkdir, mkdtemp, open, realpath, rm, writeFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import { boot } from '@deepseek-ai/dsh-app-boot';
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
@@ -10,9 +12,7 @@ import {
   chatFailureCode, chatStream, createDeepSeekAdapter,
 } from './chat-deepseek-provider.mjs';
 
-// The private database is the namespace for this one App-owned conversation.
-// A reserved id needs no second durable index or crash-prone identity sidecar.
-const SESSION = SessionId('887b19df-46de-41ac-8ba1-fafb63957a5c');
+const UUID_V4 = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const roots = [
   ['session-projection', 'dsh-session-projection'], ['session', 'dsh-session'],
   ['system-prompt', 'dsh-system-prompt', { includeHarnessIdentity: false, includeRuntimeContext: false,
@@ -58,6 +58,47 @@ function buildRows(directory) {
   rows.push({ id: 'session-persistence', name: new URL('./sqlite-session-persistence.mjs', import.meta.url).href,
     config: { directory } });
   return rows;
+}
+
+// Publish exactly one complete UUID before the SQLite backend can create data.
+// A racing starter can only adopt that UUID; a missing/corrupt identity next
+// to existing storage never causes a replacement conversation.
+async function durableSessionId(directory, work) {
+  const path = join(directory, 'session-id');
+  const inspect = async () => {
+    let file;
+    try { file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK); }
+    catch (error) { if (error?.code === 'ENOENT') return undefined; throw error; }
+    try {
+      const info = await file.stat();
+      if (!info.isFile() || (info.mode & 0o077) !== 0 || info.size !== 36) throw chatError('IOS_CHAT_STORAGE_FAILED');
+      const raw = Buffer.alloc(37);
+      const { bytesRead } = await file.read(raw, 0, raw.length, 0);
+      const id = raw.subarray(0, bytesRead).toString('utf8');
+      if (bytesRead !== 36 || !UUID_V4.test(id)) throw chatError('IOS_CHAT_STORAGE_FAILED');
+      return SessionId(id);
+    } finally { await file.close(); }
+  };
+  let id = await inspect();
+  if (!id) {
+    let existing = false;
+    try { await lstat(join(directory, 'sessions.sqlite')); existing = true; }
+    catch (error) { if (error?.code !== 'ENOENT') throw error; }
+    if (!existing) {
+      const staged = join(work, 'new-session-id');
+      await writeFile(staged, randomUUID(), { flag: 'wx', mode: 0o600, flush: true });
+      try { await link(staged, path); }
+      catch (error) { if (error?.code !== 'EEXIST') throw error; }
+      finally { await rm(staged, { force: true }); }
+    }
+    id = await inspect();
+    if (!id) throw chatError('IOS_CHAT_STORAGE_FAILED');
+  }
+  // Each contender syncs the same parent before allowing database creation;
+  // the loser cannot commit a DB before the winning link is durable.
+  const parent = await open(directory, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+  try { await parent.sync(); } finally { await parent.close(); }
+  return id;
 }
 
 export async function createChatEngine({ directory, apiKey, adapterFactory } = {}) {

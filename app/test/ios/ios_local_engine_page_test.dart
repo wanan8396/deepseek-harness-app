@@ -5,6 +5,7 @@ import 'package:dsh_app/runtime/runtime_bridge.dart';
 import 'package:dsh_app/runtime/runtime_state.dart';
 import 'package:dsh_app/state/settings_state.dart';
 import 'package:dsh_app/state/web_connection_state.dart';
+import 'package:dsh_app/ui/ios/ios_chat_page.dart';
 import 'package:dsh_app/ui/ios/ios_local_engine_page.dart';
 import 'package:dsh_app/ui/onboarding/runtime_setup_page.dart';
 import 'package:dsh_app/ui/shell/root_gate.dart';
@@ -281,7 +282,7 @@ void main() {
     ));
     await _mount(tester);
     expect(find.text('内嵌 Node.js 探针已完成'), findsOneWidget);
-    expect(find.textContaining('此版本尚未提供正式聊天'), findsOneWidget);
+    expect(find.textContaining('本机验证结果不代表聊天状态'), findsOneWidget);
     expect(find.textContaining('下方分别显示 DSH 的各项验证结果'), findsOneWidget);
     expect(find.textContaining('Node.js：24.22.1'), findsOneWidget);
     expect(find.textContaining('版本未满足'), findsNothing);
@@ -390,7 +391,7 @@ void main() {
     expect(tester.widget<Text>(find.byKey(const ValueKey('ios-local-loader-dshLoaderBooted'))).data, '通过');
     expect(tester.widget<Text>(find.byKey(const ValueKey('ios-local-core-firstTurnStreamed'))).data, '未通过');
     expect(tester.widget<Text>(find.byKey(const ValueKey('ios-local-core-errorSettled'))).data, '未通过');
-    expect(find.byKey(const ValueKey('ios-local-dsh-not-started')), findsOneWidget);
+    expect(find.byKey(const ValueKey('ios-local-diagnostics-title')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -414,7 +415,7 @@ void main() {
     expect(find.text('核心错误启动基线已拦截'), findsOneWidget);
     expect(tester.widget<Text>(find.byKey(const ValueKey('ios-local-core-badBaselineRejected'))).data, '未通过');
     expect(tester.widget<Text>(find.byKey(const ValueKey('ios-local-loader-badBaselineRejected'))).data, '通过');
-    expect(find.text('此版本尚未提供正式聊天'), findsOneWidget);
+    expect(find.text('本机验证结果不代表聊天状态'), findsOneWidget);
     expect(find.byKey(const ValueKey('ios-local-engine-page')), findsOneWidget);
     expect(find.byType(TextField), findsNothing);
     expect(tester.widget<FilledButton>(find.byKey(_start)).onPressed, isNull);
@@ -434,7 +435,7 @@ void main() {
     await _mount(tester);
     expect(find.byKey(const ValueKey('ios-local-engine-page')), findsOneWidget);
     expect(find.byKey(const ValueKey('local-web-startup-cover')), findsOneWidget);
-    expect(find.text('此版本尚未提供正式聊天'), findsOneWidget);
+    expect(find.text('本机验证结果不代表聊天状态'), findsOneWidget);
     expect(find.textContaining('仅使用内存存储和固定离线测试模型'), findsOneWidget);
     expect(find.textContaining('仍不代表完整本机引擎已就绪或可正式聊天'), findsOneWidget);
     expect(tester.widget<Text>(find.byKey(const ValueKey('ios-local-core-ephemeral'))).data, '通过');
@@ -476,7 +477,7 @@ void main() {
     await _mount(tester);
     expect(find.textContaining('版本未满足 DSH 要求'), findsOneWidget);
     expect(find.text('本地探针尚未就绪'), findsOneWidget);
-    expect(find.byKey(const ValueKey('ios-local-dsh-not-started')), findsOneWidget);
+    expect(find.byKey(const ValueKey('ios-local-diagnostics-title')), findsOneWidget);
   });
 
   for (final reason in ['node_capabilities', 'probe_failed', 'probe_timeout', 'runtime_unavailable', 'unknown_reason']) {
@@ -557,6 +558,32 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  _testIosWidgets('chat opens on the same navigator without starting a probe or model request', (tester) async {
+    messenger.setMockMethodCallHandler(_channel, (call) async {
+      calls.add(call);
+      if (call.method == 'getStatus') return _status();
+      if (call.method == 'chatSnapshot') {
+        return {'state': 'stopped', 'messages': [], 'draft': '', 'errorCode': null};
+      }
+      throw StateError(call.method);
+    });
+    await _mount(tester, page: const RootGate());
+    final openChat = find.byKey(const ValueKey('ios-local-open-chat'));
+    await tester.ensureVisible(openChat);
+    await tester.tap(openChat);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byType(IosChatPage), findsOneWidget);
+    expect(calls.map((call) => call.method), ['getStatus', 'chatSnapshot']);
+    expect(calls.every((call) => call.arguments == null), isTrue);
+    Navigator.of(tester.element(find.byType(IosChatPage))).pop();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byType(IosChatPage), findsNothing);
+    expect(find.byType(IosLocalEnginePage), findsOneWidget);
+    expect(calls, hasLength(2));
+  });
+
   _testIosWidgets('iOS retains the RootGate test-only home override', (tester) async {
     await _mount(tester, page: const RootGate(home: Scaffold(body: Text('test home'))));
     expect(find.text('test home'), findsOneWidget);
@@ -578,6 +605,8 @@ void main() {
     await _frames(tester);
     expect(find.text('Android home'), findsOneWidget);
     expect(find.byType(IosLocalEnginePage), findsNothing);
+    expect(find.byType(IosChatPage), findsNothing);
+    expect(find.byKey(const ValueKey('ios-local-open-chat')), findsNothing);
     expect(calls, isEmpty);
     expect(tester.takeException(), isNull);
   }, platform: TargetPlatform.android);
@@ -586,7 +615,7 @@ void main() {
     AppLocale.use(AppLocale.en);
     await _mount(tester);
     expect(find.text('Run local probe'), findsOneWidget);
-    expect(find.text('Chat is not available in this build'), findsOneWidget);
+    expect(find.text('Diagnostics, not chat status'), findsOneWidget);
     expect(find.textContaining('remote engine'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
@@ -617,7 +646,7 @@ void main() {
     expect(tester.widget<Text>(find.byKey(const ValueKey('ios-local-core-firstTurnStreamed'))).data, 'Not checked');
     expect(find.textContaining('not a real model provider'), findsOneWidget);
     expect(find.textContaining('No model API calls are made'), findsOneWidget);
-    expect(find.text('Chat is not available in this build'), findsOneWidget);
+    expect(find.text('Diagnostics, not chat status'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.ensureVisible(find.byKey(_refresh));
     expect(tester.widget<OutlinedButton>(find.byKey(_refresh)).onPressed, isNotNull);

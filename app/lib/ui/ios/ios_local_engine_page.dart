@@ -7,6 +7,7 @@ import '../../l10n/l10n.dart';
 import '../theme/app_icons.dart';
 import '../theme/theme.dart';
 import '../web/startup_cover.dart';
+import 'ios_chat_page.dart';
 
 /// A native Node smoke test is a prerequisite, not an installed DSH engine.
 enum IosProbeState { idle, starting, probeReady, error }
@@ -395,6 +396,15 @@ class _IosLocalEnginePageState extends State<IosLocalEnginePage> {
                 Text(l10n.iosLocalTitle, style: theme.textTheme.headlineSmall, textAlign: TextAlign.center),
                 const SizedBox(height: 8),
                 Text(l10n.iosLocalScope, textAlign: TextAlign.center, style: theme.textTheme.bodyMedium),
+                 const SizedBox(height: 16),
+                 FilledButton.icon(
+                   key: const ValueKey('ios-local-open-chat'),
+                   onPressed: () => Navigator.of(context).push<void>(
+                     MaterialPageRoute(builder: (_) => const IosChatPage()),
+                   ),
+                   icon: const Icon(AppIcons.chat),
+                   label: Text(l10n.iosChatOpen),
+                 ),
                 const SizedBox(height: 24),
                 Card(
                   child: Padding(
@@ -430,8 +440,8 @@ class _IosLocalEnginePageState extends State<IosLocalEnginePage> {
                         Text(l10n.iosLocalDshVersion(IosLocalProbeStatus.dshVersion)),
                         const SizedBox(height: 16),
                         Text(
-                          l10n.iosLocalDshNotStarted,
-                          key: const ValueKey('ios-local-dsh-not-started'),
+                          l10n.iosLocalDiagnosticsTitle,
+                          key: const ValueKey('ios-local-diagnostics-title'),
                           style: theme.textTheme.titleSmall,
                         ),
                         const SizedBox(height: 6),
