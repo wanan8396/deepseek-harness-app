@@ -7,7 +7,7 @@ import '../../l10n/l10n.dart';
 import '../theme/app_icons.dart';
 import '../theme/theme.dart';
 import '../web/startup_cover.dart';
-import 'ios_chat_page.dart';
+
 
 /// A native Node smoke test is a prerequisite, not an installed DSH engine.
 enum IosProbeState { idle, starting, probeReady, error }
@@ -165,7 +165,24 @@ class _IosLocalEnginePageState extends State<IosLocalEnginePage> {
   Timer? _poll;
   DateTime? _pendingSince;
   bool _requesting = false;
+  bool _openingOfficial = false;
   bool _visible = true;
+
+  Future<void> _openOfficial() async {
+    if (_openingOfficial || !mounted) return;
+    setState(() => _openingOfficial = true);
+    try {
+      await _channel.invokeMethod<void>('openOfficialChat').timeout(_requestTimeout);
+    } on PlatformException {
+      if (mounted) setState(() => _failure = IosProbeReason.runtimeUnavailable);
+    } on MissingPluginException {
+      if (mounted) setState(() => _failure = IosProbeReason.runtimeUnavailable);
+    } on TimeoutException {
+      if (mounted) setState(() => _failure = IosProbeReason.probeTimeout);
+    } finally {
+      if (mounted) setState(() => _openingOfficial = false);
+    }
+  }
 
   @override
   void initState() {
@@ -399,9 +416,7 @@ class _IosLocalEnginePageState extends State<IosLocalEnginePage> {
                  const SizedBox(height: 16),
                  FilledButton.icon(
                    key: const ValueKey('ios-local-open-chat'),
-                   onPressed: () => Navigator.of(context).push<void>(
-                     MaterialPageRoute(builder: (_) => const IosChatPage()),
-                   ),
+                   onPressed: _openingOfficial ? null : _openOfficial,
                    icon: const Icon(AppIcons.chat),
                    label: Text(l10n.iosChatOpen),
                  ),

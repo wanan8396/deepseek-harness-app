@@ -10,6 +10,9 @@ public final class IosLocalEnginePlugin: NSObject, FlutterPlugin {
   // Purge transient files from previous processes before admitting either boot path.
   private let runtimeDirectory = IosLocalEnginePlugin.prepareRuntimeDirectory()
   private var chatMailbox: IosChatMailbox?
+  private var officialMailbox: IosOfficialAppMailbox?
+  private weak var officialModal: UINavigationController?
+  private var nodeRunning = false
   private var state = "idle"
   private var reason: String?
   private var report: [String: Any]?
@@ -25,8 +28,8 @@ public final class IosLocalEnginePlugin: NSObject, FlutterPlugin {
   }
 
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
-    // Own probe and chat-start admission on the same main queue, including the
-    // native exit callback. Mailbox polling and file exchange run off-main.
+    // Own admission for both chat surfaces and the probe on the same main
+    // queue, including the native exit callback.
     if !Thread.isMainThread {
       DispatchQueue.main.async { self.handle(call, result: result) }
       return
@@ -42,8 +45,50 @@ public final class IosLocalEnginePlugin: NSObject, FlutterPlugin {
     case "chatCancel": handleChat(.cancel, call.arguments, result: result)
     case "chatStop": handleChat(.stop, call.arguments, result: result)
     case "chatAnswerApproval": handleChat(.answerApproval, call.arguments, result: result)
+    case "openOfficialChat":
+      DispatchQueue.main.async { self.openOfficialChat(call.arguments, result: result) }
     default: result(FlutterMethodNotImplemented)
     }
+  }
+
+  @MainActor
+  private func openOfficialChat(_ arguments: Any?, result: @escaping FlutterResult) {
+    guard arguments == nil || arguments is NSNull else {
+      result(Self.chatError("IOS_OFFICIAL_INVALID_REQUEST")); return
+    }
+    if officialModal?.presentingViewController != nil {
+      result(nil); return
+    }
+    let bundle = Bundle(for: DshEmbeddedNode.self)
+    guard bundle.url(forResource: "official-app-mailbox", withExtension: "mjs", subdirectory: "dsh-official-app") != nil,
+          let resources = try? IosOfficialAppView.Resources(bundle: bundle) else {
+      // A missing production package does not activate the runtime or alter
+      // the legacy Flutter chat's behavior.
+      result(Self.chatError("IOS_OFFICIAL_ASSETS_UNAVAILABLE")); return
+    }
+    let windows = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+      .filter { $0.activationState == .foregroundActive }.flatMap { $0.windows }
+    guard let presenter = windows.first(where: \.isKeyWindow)?.rootViewController,
+          presenter.viewIfLoaded?.window != nil, presenter.presentedViewController == nil,
+          !presenter.isBeingDismissed else {
+      result(Self.chatError("IOS_OFFICIAL_PRESENTATION_UNAVAILABLE")); return
+    }
+    let page = IosOfficialAppView(resources: resources, getMailbox: { [weak self] in
+      guard let self else { throw IosOfficialAppMailbox.Failure.unavailable }
+      self.ensureNodeStarted()
+      guard self.nodeRunning, let report = self.reportURL else { throw IosOfficialAppMailbox.Failure.unavailable }
+      if let mailbox = self.officialMailbox { return mailbox }
+      let mailbox = try IosOfficialAppMailbox(reportURL: report, runtimeIsRunning: { [weak self] in
+        self?.nodeRunning == true
+      })
+      self.officialMailbox = mailbox
+      return mailbox
+    })
+    let modal = UINavigationController(rootViewController: page)
+    modal.modalPresentationStyle = .fullScreen
+    officialModal = modal
+    presenter.present(modal, animated: true)
+    result(nil)
   }
 
   private func handleChat(_ method: IosChatMailbox.Method, _ arguments: Any?, result: @escaping FlutterResult) {
@@ -95,6 +140,7 @@ public final class IosLocalEnginePlugin: NSObject, FlutterPlugin {
         attributes: [.posixPermissions: 0o700])
       try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
       IosChatMailbox.removeStaleMailboxes(in: directory)
+      IosOfficialAppMailbox.removeStaleMailboxes(in: directory)
       return directory
     } catch { return nil }
   }
@@ -116,13 +162,14 @@ public final class IosLocalEnginePlugin: NSObject, FlutterPlugin {
     chatMailbox = try? IosChatMailbox(reportURL: output)
     reportURL = output
     state = "starting"; deadline = Date().addingTimeInterval(45)
-    let started = DshEmbeddedNode.startProbe(atPath: script, reportPath: output.path) { [weak self] _ in
+    nodeRunning = DshEmbeddedNode.startProbe(atPath: script, reportPath: output.path) { [weak self] _ in
       self?.nodeExited()
     }
-    if !started { nodeExited() }
+    if !nodeRunning { nodeExited() }
   }
 
   private func nodeExited() {
+    nodeRunning = false
     chatMailbox?.invalidate()
     chatMailbox = nil
     state = "error"; reason = "probe_failed"

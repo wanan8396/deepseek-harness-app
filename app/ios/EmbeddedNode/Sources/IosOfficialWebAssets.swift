@@ -57,6 +57,14 @@ public final class IosOfficialWebAssets: NSObject, WKURLSchemeHandler {
     let graph: Graph
     let index: File
     let resources: [Resource]
+    struct AppAsset: Decodable {
+      let route: String
+      let path: String
+      let contentType: String
+      let bytes: Int
+      let sha256: String
+    }
+    let appAssets: [AppAsset]?
     let cspScriptHashes: [String]
   }
   private struct Asset {
@@ -191,6 +199,15 @@ public final class IosOfficialWebAssets: NSObject, WKURLSchemeHandler {
       let data = try checkedPreviewFile(url, bytes: resource.bytes, sha256: resource.sha256)
       assets[resource.url] = Asset(url: url, bytes: data.count, contentType: javascript, previewData: data)
     }
+    if let extras = manifest.appAssets {
+      guard manifest.graph.entries.count == 28, extras.count == 1, let item = extras.first,
+            item.route == "/plugins/@deepseek-ai/dsh-client-ui-chat/assets/running-whale%402x-06738fa29b2f.png",
+            item.path == "running-whale.png", item.contentType == "image/png", item.bytes == 21631,
+            item.sha256 == "0fd990d118113d19af7af4480f2b55d610b103451a08be6f7bf5a146823f8bd3" else { throw invalid }
+      let url = root.appendingPathComponent(item.path)
+      let data = try checkedPreviewFile(url, bytes: item.bytes, sha256: item.sha256)
+      assets[item.route] = Asset(url: url, bytes: data.count, contentType: item.contentType, previewData: data)
+    }
     return assets
   }
 
@@ -243,7 +260,9 @@ public final class IosOfficialWebAssets: NSObject, WKURLSchemeHandler {
           let parts = URLComponents(url: url, resolvingAgainstBaseURL: false),
           parts.scheme == Self.scheme, parts.host == "bundle", parts.port == nil,
           parts.user == nil, parts.password == nil, parts.fragment == nil,
-          parts.percentEncodedPath.hasPrefix("/"), !parts.percentEncodedPath.contains("%") else {
+          parts.percentEncodedPath.hasPrefix("/"),
+           !parts.percentEncodedPath.contains("%") ||
+             (parts.percentEncodedQuery == nil && parts.percentEncodedPath == "/plugins/@deepseek-ai/dsh-client-ui-chat/assets/running-whale%402x-06738fa29b2f.png") else {
       urlSchemeTask.didFailWithError(URLError(.unsupportedURL))
       return
     }

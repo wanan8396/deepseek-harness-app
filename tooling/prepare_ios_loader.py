@@ -21,6 +21,8 @@ DEFAULT_CORE_OUTPUT = DEFAULT_OUTPUT.with_name('dsh-core')
 DEFAULT_PERSISTENCE_OUTPUT = DEFAULT_OUTPUT.with_name('dsh-persistence')
 DEFAULT_CHAT_OUTPUT = DEFAULT_OUTPUT.with_name('dsh-chat')
 DEFAULT_OFFICIAL_HOST_OUTPUT = ROOT / 'app/ios/RunnerTests/dsh-official-host-ci'
+DEFAULT_OFFICIAL_APP_OUTPUT = DEFAULT_OUTPUT.with_name('dsh-official-app')
+OFFICIAL_PHASES = ('official-host-ci', 'official-app')
 OFFICIAL_HOST_ENTRY_PACKAGES = (
     '@deepseek-ai/dsh-agent-default-model', '@deepseek-ai/dsh-api-gateway',
     '@deepseek-ai/dsh-api-remote-access', '@deepseek-ai/dsh-api-remotes',
@@ -175,11 +177,11 @@ def phase_entry_packages(phase: str) -> tuple[str, ...]:
         return (ENTRY_PACKAGE,)
     if phase == 'core':
         return (ENTRY_PACKAGE, *CORE_ENTRY_PACKAGES)
-    if phase in ('persistence', 'chat', 'official-host-ci'):
+    if phase in ('persistence', 'chat', *OFFICIAL_PHASES):
         entries = (ENTRY_PACKAGE, *CORE_ENTRY_PACKAGES, CHECKPOINT_PACKAGE)
         if phase == 'chat':
             return (*entries, CHAT_PROVIDER_PACKAGE)
-        if phase == 'official-host-ci':
+        if phase in OFFICIAL_PHASES:
             return (*entries, CHAT_PROVIDER_PACKAGE, *OFFICIAL_HOST_ENTRY_PACKAGES)
         return entries
     raise ExportError('EXPORT_PHASE_INVALID')
@@ -190,15 +192,15 @@ def dependency_closure(seed: Path, lock: dict, phase: str = 'loader') -> tuple[d
     omitted = []
     queue = [(None, name) for name in phase_entry_packages(phase)]
     reviewed = REVIEWED_PACKAGES if phase == 'loader' else CORE_REVIEWED_PACKAGES
-    if phase in ('persistence', 'chat', 'official-host-ci'):
+    if phase in ('persistence', 'chat', *OFFICIAL_PHASES):
         reviewed = reviewed | {CHECKPOINT_PACKAGE}
-    if phase in ('chat', 'official-host-ci'):
+    if phase in ('chat', *OFFICIAL_PHASES):
         reviewed = reviewed | CHAT_REVIEWED_PACKAGES
-    if phase == 'official-host-ci':
+    if phase in OFFICIAL_PHASES:
         reviewed = reviewed | OFFICIAL_HOST_REVIEWED_PACKAGES
     while queue:
         parent, name = queue.pop(0)
-        if phase == 'official-host-ci' and parent is not None:
+        if phase in OFFICIAL_PHASES and parent is not None:
             why = OFFICIAL_HOST_EXCLUSIONS.get((parent.name, name))
             if why is not None:
                 omitted.append({'parent': str(parent), 'package': name, 'reason': why})
@@ -352,6 +354,9 @@ def prepare(seed: Path, destination: Path, check: bool = False, phase: str = 'lo
         'official-host-ci': ('official-host.mjs', 'official-host-ci-mailbox.mjs', 'sqlite-session-persistence.mjs',
                              'core-fixture-model.mjs', 'official-app-services.mjs', 'official-app-routes.mjs', 'chat-model-channel.mjs',
                              'chat-deepseek-provider.mjs', 'chat-workspace-tools.mjs'),
+        'official-app': ('official-host.mjs', 'official-app-services.mjs', 'official-app-routes.mjs', 'official-app-mailbox.mjs',
+                         'sqlite-session-persistence.mjs', 'chat-model-channel.mjs', 'chat-deepseek-provider.mjs',
+                         'chat-workspace-tools.mjs'),
     }[phase]
     own_files = [ROOT / 'runtime/ios' / name for name in own_names]
     for source in own_files:
@@ -377,6 +382,7 @@ def prepare(seed: Path, destination: Path, check: bool = False, phase: str = 'lo
             'persistence': ['web-profile', 'model-provider-network', 'official-jsonl-storage', 'chat-transport'],
             'chat': ['web-profile', 'official-jsonl-storage', 'unrestricted-tools', 'attachments', 'remote-engine'],
             'official-host-ci': ['production-web-ui', 'raster-attachments', 'model-provider-network'],
+            'official-app': ['raster-attachments', 'file-upload', 'directory-picker', 'remote-engine', 'desktop-opener'],
         }[phase],
         'packages': [{'path': key, 'name': value[1]['name'], 'version': value[0]['version'],
                       'resolved': value[0]['resolved'], 'integrity': value[0]['integrity'],
@@ -416,13 +422,13 @@ def prepare(seed: Path, destination: Path, check: bool = False, phase: str = 'lo
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--seed', type=Path, required=True, help='Independent exact-lock npm ci seed')
-    parser.add_argument('--phase', choices=('loader', 'core', 'persistence', 'chat', 'official-host-ci'), default='loader')
+    parser.add_argument('--phase', choices=('loader', 'core', 'persistence', 'chat', *OFFICIAL_PHASES), default='loader')
     parser.add_argument('--output', type=Path, help='Defaults to the phase-specific dsh-* resources directory')
     parser.add_argument('--check', action='store_true', help='Inspect seed and hashes only; write nothing')
     args = parser.parse_args(argv)
     output = args.output if args.output is not None else {
         'loader': DEFAULT_OUTPUT, 'core': DEFAULT_CORE_OUTPUT, 'persistence': DEFAULT_PERSISTENCE_OUTPUT,
-        'chat': DEFAULT_CHAT_OUTPUT, 'official-host-ci': DEFAULT_OFFICIAL_HOST_OUTPUT,
+        'chat': DEFAULT_CHAT_OUTPUT, 'official-host-ci': DEFAULT_OFFICIAL_HOST_OUTPUT, 'official-app': DEFAULT_OFFICIAL_APP_OUTPUT,
     }[args.phase]
     try:
         manifest = prepare(args.seed, output, args.check, args.phase)

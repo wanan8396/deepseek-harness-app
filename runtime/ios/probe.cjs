@@ -112,6 +112,12 @@ async function main(reportPath) {
         .then(({ startChatMailbox }) => startChatMailbox(reportPath))
         .catch(() => console.error('IOS_CHAT_UNAVAILABLE'));
     }
+    const official = path.join(__dirname, 'dsh-official-app');
+    if (fs.existsSync(official)) {
+      void import(pathToFileURL(path.join(official, 'official-app-mailbox.mjs')).href)
+        .then(({ startOfficialAppMailbox }) => startOfficialAppMailbox(reportPath, official))
+        .catch(() => console.error('IOS_OFFICIAL_APP_UNAVAILABLE'));
+    }
     const report = await collectReport(reportPath);
     const loaderRoot = path.join(__dirname, 'dsh-loader');
     if (fs.existsSync(loaderRoot)) {

@@ -41,6 +41,7 @@
     return new Response(bytes.byteLength ? bytes : null, { status: reply.status, headers: reply.headers ?? {} });
   };
   const openedStreams = new Set();
+  const streamRoute = globalThis.__DSH_IOS_APP_CARRIER__ === true ? 'api/ios-app/stream' : 'api/ios-ci/stream';
   const readOnlyEndpoints = new Set(['$events', 'remoteAccess/follow', 'workspace/follow', 'session/control', 'session/follow']);
   let retired = false;
   // RunnerTests supports only the audited downlink streams. Generated Remote
@@ -52,7 +53,7 @@
     const id = 's' + Array.from(crypto.getRandomValues(new Uint8Array(16)),
       byte => byte.toString(16).padStart(2, '0')).join('');
     const command = async (type, extra = {}) => {
-      const response = await fetchImpl('api/ios-ci/stream', {
+      const response = await fetchImpl(streamRoute, {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ id, type, ...extra }),
       });

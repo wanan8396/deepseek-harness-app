@@ -67,6 +67,15 @@ jobs:
           path: ${{ runner.temp }}/dsh-ios-web-shell-preview/
           if-no-files-found: error
           retention-days: 7
+      - name: Export separate production Host and official text-chat assets
+        run: |
+          python3 tooling/prepare_ios_loader.py --seed "$RUNNER_TEMP/dsh-ios-seed" --phase official-app --output "$RUNNER_TEMP/dsh-ios-official-app"
+          node runtime/ios/test-official-app-host.mjs "$RUNNER_TEMP/dsh-ios-official-app"
+          node runtime/ios/test-official-app-mailbox.mjs "$RUNNER_TEMP/dsh-ios-official-app"
+          node runtime/ios/export-web-shell-preview.mjs "$RUNNER_TEMP/dsh-ios-seed" "$RUNNER_TEMP/dsh-ios-official-web" "$RUNNER_TEMP/dsh-ios-official-app" --app
+          for phase in official-app official-web; do
+            tar -czf "$RUNNER_TEMP/dsh-ios-$phase.tar.gz" -C "$RUNNER_TEMP/dsh-ios-$phase" .
+          done
       - name: Export exact tested runtime bundles for the iOS job
         run: |
           for phase in loader core persistence chat; do
@@ -83,6 +92,8 @@ jobs:
             ${{ runner.temp }}/dsh-ios-web-frontend.tar.gz
             ${{ runner.temp }}/dsh-ios-web-bootstrap.tar.gz
             ${{ runner.temp }}/dsh-ios-official-host-ci.tar.gz
+            ${{ runner.temp }}/dsh-ios-official-app.tar.gz
+            ${{ runner.temp }}/dsh-ios-official-web.tar.gz
           retention-days: 7
   ios:
     needs: loader
@@ -137,11 +148,12 @@ jobs:
             mkdir -p "$destination"
             tar -xzf "$RUNNER_TEMP/ios-loader-input/dsh-ios-$phase.tar.gz" -C "$destination"
           done
-          for phase in web-frontend web-bootstrap; do
+          for phase in web-frontend web-bootstrap official-app official-web; do
             web="app/ios/EmbeddedNode/Resources/dsh-$phase"
             mkdir -p "$web"
             tar -xzf "$RUNNER_TEMP/ios-loader-input/dsh-ios-$phase.tar.gz" -C "$web"
           done
+          cp runtime/ios/official-web-bridge.js app/ios/EmbeddedNode/Resources/official-web-bridge.js
           ci="app/ios/RunnerTests/dsh-official-host-ci"
           mkdir -p "$ci"
           tar -xzf "$RUNNER_TEMP/ios-loader-input/dsh-ios-official-host-ci.tar.gz" -C "$ci"
@@ -167,8 +179,10 @@ jobs:
           set -o pipefail
           flutter build ios --simulator --debug --no-pub --build-name 0.2.2 --build-number "$GITHUB_RUN_NUMBER" -v 2>&1 | tee "$RUNNER_TEMP/ios-simulator-build.log"
       - name: Verify Simulator artifact
+        id: simulator-verification
         run: python3 tooling/verify_ios_build.py app/build/ios/iphonesimulator/Runner.app --simulator --output dist/ios/simulator-verification.json
       - name: Execute Node inside actual iOS Simulator
+        id: simulator-tests
         run: |
           set -euo pipefail
           device=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for group in d["devices"].values() for x in group if x["isAvailable"] and x["name"].startswith("iPhone")))')
@@ -196,14 +210,19 @@ jobs:
             xcrun xcresulttool export attachments --path "$web" --output-path dist/ios/web-test-attachments
           fi
       - name: Build unsigned iPhone and iPad application
+        if: always() && steps.simulator-verification.outcome == 'success'
+        id: device-build
         working-directory: app
         run: flutter build ios --release --no-codesign --no-pub --build-name 0.2.2 --build-number "$GITHUB_RUN_NUMBER"
       - name: Verify device application
+        if: always() && steps.device-build.outcome == 'success'
+        id: device-verification
         run: |
           python3 tooling/verify_ios_build.py app/build/ios/iphoneos/Runner.app --output dist/ios/device-verification.json
-          printf 'source=%s\ntarget=iPhone,iPad\nDSH_BOOT_VERIFIED=false\nSIGNING=none\n' "$GITHUB_SHA" > dist/ios/build-info.txt
+          printf 'source=%s\ntarget=iPhone,iPad\nsimulator_gate=%s\nwidget_gate=%s\nfull_official_parity=false\nsigning=none\n' "$GITHUB_SHA" '${{ steps.simulator-tests.outcome }}' '${{ steps.widget-tests.outcome }}' > dist/ios/build-info.txt
           tar -czf dist/ios/unsigned-iphone-ipad-app.tar.gz -C app/build/ios/iphoneos Runner.app
-      - name: Package the verified device App as an unsigned IPA
+      - name: Package the verified device App as an unsigned development IPA
+        if: always() && steps.device-verification.outcome == 'success'
         run: |
           set -euo pipefail
           stage=$(mktemp -d "$RUNNER_TEMP/dsh-ios-ipa.XXXXXXXX")

@@ -558,13 +558,11 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  _testIosWidgets('chat opens on the same navigator without starting a probe or model request', (tester) async {
+  _testIosWidgets('official chat delegates to the native iOS entry without passing credentials', (tester) async {
     messenger.setMockMethodCallHandler(_channel, (call) async {
       calls.add(call);
       if (call.method == 'getStatus') return _status();
-      if (call.method == 'chatSnapshot') {
-        return {'state': 'stopped', 'messages': [], 'draft': '', 'errorCode': null};
-      }
+      if (call.method == 'openOfficialChat') return null;
       throw StateError(call.method);
     });
     await _mount(tester, page: const RootGate());
@@ -573,15 +571,10 @@ void main() {
     await tester.tap(openChat);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
-    expect(find.byType(IosChatPage), findsOneWidget);
-    expect(calls.map((call) => call.method), ['getStatus', 'chatSnapshot']);
+    expect(calls.map((call) => call.method), ['getStatus', 'openOfficialChat']);
     expect(calls.every((call) => call.arguments == null), isTrue);
-    Navigator.of(tester.element(find.byType(IosChatPage))).pop();
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 400));
     expect(find.byType(IosChatPage), findsNothing);
     expect(find.byType(IosLocalEnginePage), findsOneWidget);
-    expect(calls, hasLength(2));
   });
 
   _testIosWidgets('iOS retains the RootGate test-only home override', (tester) async {

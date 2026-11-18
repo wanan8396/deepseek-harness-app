@@ -487,7 +487,9 @@ final class RunnerTests: XCTestCase {
         await openSidebar();
         const item = await waitFor('workspace session row ' + id, () => {
           const candidate = row('session:' + id);
-          return candidate && candidate.parentElement === workspace()?.parentElement && candidate;
+          // rc.3 wraps the Workspace header in a HoverCard. Its parent is
+          // not necessarily the group's own Session-row parent.
+          return workspace()?.getAttribute('aria-expanded') === 'true' && candidate;
         });
         if (item.getAttribute('aria-selected') !== 'false') throw new Error('Session already selected before click: ' + id);
         item.click();

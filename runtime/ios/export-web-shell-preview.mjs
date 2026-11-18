@@ -16,6 +16,16 @@ const packages = [
   'client-ui-layout', 'client-ui-renderer', 'client-ui-session', 'client-ui-settings',
   'client-ui-sidebar', 'client-ui-theme', 'client-ui-workspace',
 ].map(name => prefix + name);
+const app = process.argv[5] === '--app';
+const appArtifact = {
+  route: '/plugins/@deepseek-ai/dsh-client-ui-chat/assets/running-whale%402x-06738fa29b2f.png',
+  path: 'running-whale.png', contentType: 'image/png', bytes: 21631,
+  sha256: '0fd990d118113d19af7af4480f2b55d610b103451a08be6f7bf5a146823f8bd3',
+};
+if (app) packages.push(...[
+  'client-resources', 'client-ui-approval', 'client-ui-chat', 'client-ui-commands',
+  'client-ui-file-drag', 'client-ui-input-trigger', 'client-ui-model-selection', 'client-ui-sidebar-right',
+].map(name => prefix + name));
 const documentURL = 'dsh-app://bundle/';
 const seed = resolve(process.argv[2]);
 const output = resolve(process.argv[3]);
@@ -92,6 +102,15 @@ try {
     await writeFile(join(stage, path), bytes, { flag: 'wx' });
     resources.push({ url: route, path, contentType, bytes: bytes.length, sha256: hash });
   }
+  if (app) {
+    const asset = await host.clientBundle(new Request(new URL(appArtifact.route, documentURL)));
+    assert.equal(asset.status, 200);
+    assert.equal(asset.headers.get('content-type'), appArtifact.contentType);
+    const bytes = Buffer.from(await asset.arrayBuffer());
+    assert.equal(bytes.length, appArtifact.bytes);
+    assert.equal(sha256(bytes), appArtifact.sha256);
+    await writeFile(join(stage, appArtifact.path), bytes, { flag: 'wx' });
+  }
   const [{ bootInjections }, { renderIndexInjections }] = await Promise.all([
     import(entry(prefix + 'client-modules')), import(entry(prefix + 'host-webserver')),
   ]);
@@ -107,6 +126,7 @@ try {
     schemaVersion: 1, stage: 'official-shell-preview', officialUIReady: false, graph, resources, cspScriptHashes,
     index: { path: 'index.html', bytes: htmlBytes.length, sha256: sha256(htmlBytes) },
     license: { path: 'LICENSE', bytes: license.length, sha256: licenseSHA256 },
+    ...(app ? { appAssets: [appArtifact] } : {}),
     sourceLockSHA256: sha256(lock),
   }, null, 2), { flag: 'wx' });
   await host.dispose();

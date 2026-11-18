@@ -74,6 +74,29 @@ def main():
         item = bootstrap / entry['path']
         assert item.is_file() and not item.is_symlink() and item.stat().st_size == entry['bytes']
         assert hashlib.sha256(item.read_bytes()).hexdigest() == entry['sha256']
+    app_runtime = framework / 'dsh-official-app'
+    release_host = json.loads((app_runtime / 'distribution-manifest.json').read_bytes())
+    assert release_host['phase'] == 'official-app' and release_host['sourceLockSHA256'] == web['sourceLockSHA256']
+    assert (app_runtime / 'official-app-mailbox.mjs').is_file()
+    assert not (app_runtime / 'core-fixture-model.mjs').exists()
+    for entry in release_host['files']:
+        relative = Path(entry['path'])
+        assert not relative.is_absolute() and '..' not in relative.parts
+        item = app_runtime / relative
+        assert item.is_file() and not item.is_symlink() and item.stat().st_size == entry['bytes']
+        assert hashlib.sha256(item.read_bytes()).hexdigest() == entry['sha256']
+    app_web = framework / 'dsh-official-web'
+    release_web = json.loads((app_web / 'distribution-manifest.json').read_bytes())
+    assert release_web['sourceLockSHA256'] == web['sourceLockSHA256']
+    assert len(release_web['graph']['entries']) == 28 and len(release_web['appAssets']) == 1
+    assert release_web['stage'] == 'official-shell-preview' and release_web['officialUIReady'] is False
+    for entry in [release_web['index'], release_web['license'], *release_web['resources'], *release_web['appAssets']]:
+        relative = Path(entry['path'])
+        assert not relative.is_absolute() and '..' not in relative.parts
+        item = app_web / relative
+        assert item.is_file() and not item.is_symlink() and item.stat().st_size == entry['bytes']
+        assert hashlib.sha256(item.read_bytes()).hexdigest() == entry['sha256']
+    assert (framework / 'official-web-bridge.js').read_bytes() == (root / 'runtime/ios/official-web-bridge.js').read_bytes()
     bridge = app / 'Frameworks/DshEmbeddedNode.framework/DshEmbeddedNode'
     assert bridge.is_file(), 'Embedded runtime bridge framework missing'
     deps = subprocess.check_output(['otool', '-L', str(bridge)], text=True)
