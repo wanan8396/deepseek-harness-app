@@ -25,12 +25,17 @@ jobs:
         run: |
           python3 -m unittest discover -s tooling -p test_ios_engine_pin.py -v
           python3 -m unittest discover -s tooling -p test_prepare_ios_loader.py -v
+          python3 -m unittest discover -s tooling -p test_stage_ios_flutter.py -v
       - name: Resolve exact official dependency lock into isolated seed
         run: |
           mkdir -p "$RUNNER_TEMP/dsh-ios-seed"
           lock_dir=$(python3 tooling/ios_engine_pin.py lock-directory)
           cp "$lock_dir"/package.json "$lock_dir"/package-lock.json "$RUNNER_TEMP/dsh-ios-seed/"
           npm ci --prefix "$RUNNER_TEMP/dsh-ios-seed" --engine-strict --ignore-scripts --omit=optional --no-audit --no-fund
+      - name: Exercise the scoped provider with the exact official file tool package
+        run: |
+          cp runtime/ios/{official-workspace-fs,test-official-workspace-fs}.mjs "$RUNNER_TEMP/dsh-ios-seed/"
+          node "$RUNNER_TEMP/dsh-ios-seed/test-official-workspace-fs.mjs"
       - name: Export reviewed pure-JS Loader composition
         run: python3 tooling/prepare_ios_loader.py --seed "$RUNNER_TEMP/dsh-ios-seed" --output "$RUNNER_TEMP/dsh-ios-loader"
       - name: Exercise real DSH Loader and bad-baseline rejection

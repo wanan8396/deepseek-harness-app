@@ -1,0 +1,172 @@
+// Staged alongside ios_official_carrier.dart as ios_dsh_client_adapter.dart.
+// SDK contract: packages/dsh_client at aa3578557b1500ecf4ec62f9ad86223e6e3f1bf5.
+import 'dart:async';
+
+import 'package:dsh_client/dsh_client.dart';
+
+import 'ios_official_carrier.dart';
+
+/// Adapts one native Host generation for [DshClient.withCarrier].
+///
+/// The client owns this carrier. Close the client to stop the native Host;
+/// closing or replacing a mux link only cancels that link's downlinks.
+final class IosDshClientAdapter extends DshCarrier {
+  IosDshClientAdapter(this._official);
+
+  final IosOfficialCarrier _official;
+  final _links = <_IosMuxLink>{};
+  DshCarrierRefusedException? _staleGeneration;
+  bool _closed = false;
+
+  @override
+  String get kind => 'ios-official';
+
+  @override
+  DshTracer? get tracer => null;
+
+  @override
+  bool get supportsUplink => false;
+
+  @override
+  Future<RpcResult> call(String endpoint, Map<String, Object?> args, {Duration? timeout}) async {
+    _checkOpen();
+    checkRemoteEndpoint(endpoint);
+    try {
+      return switch (await _official.call(endpoint, args, timeout: timeout)) {
+        IosOfficialRpcSuccess(:final value) => RpcOk(value),
+        IosOfficialRpcFailure(:final error) => RpcError(DshRemoteException.fromJson(error)),
+      };
+    } on IosOfficialTransportException catch (error) {
+      throw _translate(error);
+    }
+  }
+
+  @override
+  Future<DshMuxLink> openLink(MuxOptions options) async {
+    _checkOpen();
+    final link = _IosMuxLink(this);
+    _links.add(link);
+    return link;
+  }
+
+  @override
+  Future<void> close() async {
+    _closed = true;
+    final closing = [for (final link in _links.toList()) link.close(1000, 'carrier closed')];
+    // Stop the runtime even if a native stream close is still settling.
+    try {
+      await Future.wait([_official.close(), ...closing]);
+    } on IosOfficialTransportException catch (error) {
+      throw _translate(error);
+    }
+  }
+
+  void _checkOpen() {
+    if (_closed) throw const DshClosedException('iOS carrier closed');
+    final stale = _staleGeneration;
+    if (stale != null) throw stale;
+  }
+
+  DshException _translate(IosOfficialTransportException error) {
+    final status = error.status;
+    if (status != null) return DshHttpException(status, error.code);
+    return switch (error.code) {
+      'IOS_OFFICIAL_CLOSED' => const DshClosedException('iOS Host closed'),
+      'IOS_OFFICIAL_GENERATION_STALE' => _staleGeneration ??= DshCarrierRefusedException(
+        error.code,
+        'The iOS Host generation is no longer active',
+      ),
+      'IOS_OFFICIAL_INVALID_REPLY' || 'IOS_OFFICIAL_INVALID_REQUEST' => DshProtocolException(error.code),
+      _ => DshTransportException(error.code),
+    };
+  }
+}
+
+final class _IosMuxLink implements DshMuxLink {
+  _IosMuxLink(this._owner);
+
+  final IosDshClientAdapter _owner;
+  final _streams = <String, StreamSubscription<Object?>>{};
+  late final DshMuxFrameHandler _onFrame;
+  late final DshMuxLossHandler _onLost;
+  bool _closed = false;
+  Future<void>? _closing;
+
+  @override
+  void start({required DshMuxFrameHandler onFrame, required DshMuxLossHandler onLost}) {
+    _onFrame = onFrame;
+    _onLost = onLost;
+  }
+
+  @override
+  void open(String streamId, String endpoint, Map<String, Object?> payload) {
+    if (_closed || _streams.containsKey(streamId)) return;
+    final args = payload['args'];
+    final source = args is Map<String, Object?>
+        ? _owner._official.openStream(endpoint, args)
+        : Stream<Object?>.error(const IosOfficialTransportException('IOS_OFFICIAL_INVALID_REQUEST'));
+    late final StreamSubscription<Object?> subscription;
+    bool ownsStream() => !_closed && identical(_streams[streamId], subscription);
+    subscription = source.listen(
+      (value) {
+        if (ownsStream()) _onFrame({'type': 'item', 'streamId': streamId, 'value': value});
+      },
+      onDone: () {
+        if (!ownsStream()) return;
+        _streams.remove(streamId);
+        _onFrame({'type': 'end', 'streamId': streamId});
+      },
+      onError: (Object error, StackTrace _) {
+        if (!ownsStream()) return;
+        _streams.remove(streamId);
+        // The mailbox releases a failed downlink. A status (including 500)
+        // does not itself establish loss of the native generation.
+        final native = error is IosOfficialTransportException ? error : null;
+        final cause = native == null
+            ? const DshProtocolException('Unexpected iOS downlink failure')
+            : _owner._translate(native);
+        if (cause is DshClosedException ||
+            cause is DshCarrierRefusedException ||
+            native?.code == 'IOS_OFFICIAL_UNAVAILABLE') {
+          unawaited(close(4003, 'iOS Host transport lost'));
+          _onLost(const DshCarrierLostException('iOS Host transport lost'), cause);
+          return;
+        }
+        _onFrame({
+          'type': 'error',
+          'streamId': streamId,
+          'error': {
+            'code': native?.code ?? 'IOS_OFFICIAL_INVALID_REPLY',
+            'message': cause.message,
+            'details': {if (cause is DshHttpException) 'status': cause.statusCode},
+          },
+        });
+      },
+      cancelOnError: true,
+    );
+    _streams[streamId] = subscription;
+  }
+
+  @override
+  void cancel(String streamId) {
+    final subscription = _streams.remove(streamId);
+    if (subscription != null) unawaited(subscription.cancel());
+  }
+
+  @override
+  void sendItem(String streamId, Object? value) => throw UnsupportedError('iOS streams are downlink-only');
+
+  @override
+  void endUplink(String streamId) => throw UnsupportedError('iOS streams are downlink-only');
+
+  @override
+  Future<void> close(int code, String reason) => _closing ??= _close();
+
+  Future<void> _close() async {
+    _closed = true;
+    _owner._links.remove(this);
+    final subscriptions = _streams.values.toList();
+    _streams.clear();
+    await Future.wait([for (final subscription in subscriptions) subscription.cancel()]);
+  }
+}

@@ -1,0 +1,273 @@
+// Stage as test/ios/ios_dsh_client_adapter_test.dart with the donor SDK.
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:dsh_app/ui/ios/ios_dsh_client_adapter.dart';
+import 'package:dsh_app/ui/ios/ios_official_carrier.dart';
+import 'package:dsh_client/dsh_client.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+const _channel = MethodChannel('dsh/ios-local');
+const _nativeGeneration = '01234567-89ab-4def-8123-456789abcdef';
+const _mailbox = '/api/ios-app/stream';
+const _sessionId = 'session-11111111-2222-4333-8444-555555555555';
+const _followArgs = {
+  'request': {'address': {'kind': 'session', 'sessionId': _sessionId}},
+};
+
+Map<String, Object?> _reply(Object? body, {int status = 200}) => {'status': status, 'body': jsonEncode(body)};
+
+Map<String, Object?> _rpcReply(Map<String, Object?> body, Map<String, Object?> result) => _reply({
+  'type': 'server-response',
+  'rpcId': body['rpcId'],
+  'result': result,
+});
+
+Map<String, Object?> _item(Object? value) => _reply({'done': false, 'value': value});
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+  const muxOptions = MuxOptions(autoReconnect: false);
+  const deadline = Duration(seconds: 2);
+  tearDown(() => messenger.setMockMethodCallHandler(_channel, null));
+
+  Future<IosDshClientAdapter> start(
+    FutureOr<Object?> Function(String, Map<String, Object?>) post, {
+    void Function()? stop,
+  }) async {
+    messenger.setMockMethodCallHandler(_channel, (call) async {
+      switch (call.method) {
+        case 'startOfficialRuntime':
+          return _nativeGeneration;
+        case 'callOfficialRuntime':
+          final args = call.arguments as Map;
+          expect(args['generation'], _nativeGeneration);
+          return post(args['path'] as String, jsonDecode(args['body'] as String) as Map<String, Object?>);
+        case 'stopOfficialRuntime':
+          expect(call.arguments, {'generation': _nativeGeneration});
+          stop?.call();
+          return null;
+        default:
+          fail('unexpected channel operation: ${call.method}');
+      }
+    });
+    return IosDshClientAdapter(await IosOfficialCarrier.start(
+      apiKey: 'fixture-key',
+      protocol: 'openai-chat',
+      baseUrl: 'https://models.example/v1',
+      modelId: 'fixture-model',
+      channel: _channel,
+    ));
+  }
+
+  test('DshRpc preserves results and separates Host errors from transport and protocol failures', () async {
+    var calls = 0;
+    final adapter = await start((path, body) {
+      expect(path, '/api/session/list');
+      final rpcId = body['rpcId'];
+      expect(rpcId, matches(RegExp(r'^[0-9a-f-]{36}$')));
+      expect(body, {
+        'type': 'client-request',
+        'rpcId': rpcId,
+        'method': 'session/list',
+        'payload': {'args': {'_request': {}}},
+      });
+      return switch (calls++) {
+        0 => _rpcReply(body, {'ok': true, 'value': {'items': []}}),
+        1 => _rpcReply(body, {
+          'ok': false,
+          'error': {'code': 'session/not-found', 'message': 'missing', 'details': {'owner': 'fixture'}},
+        }),
+        2 => _reply('private denial', status: 403),
+        _ => _reply({'type': 'server-response', 'rpcId': 'wrong', 'result': {'ok': true}}),
+      };
+    });
+    addTearDown(adapter.close);
+    final rpc = DshRpc(adapter);
+    const args = <String, Object?>{'_request': {}};
+    expect(await rpc.callResult('session/list', args), isA<RpcOk>().having((r) => r.value, 'value', {'items': []}));
+    expect(await rpc.callResult('session/list', args), isA<RpcError>().having(
+      (r) => r.error,
+      'Host error',
+      isA<DshRemoteException>()
+          .having((e) => e.code, 'code', 'session/not-found')
+          .having((e) => e.details, 'details', {'owner': 'fixture'}),
+    ));
+    await expectLater(rpc.call('session/list', args), throwsA(isA<DshHttpException>()
+        .having((e) => e.statusCode, 'status', 403)
+        .having((e) => e.body, 'body', isEmpty)));
+    await expectLater(rpc.call('session/list', args), throwsA(isA<DshProtocolException>()));
+  });
+
+  test('donor mux receives ready and approval, and forwards the explicit result and turn cancellation', () async {
+    const eventId = 'fixture-event';
+    const hostClientId = 'from-real-ready';
+    final pendingEvent = Completer<Object?>();
+    final rpcMethods = <String>[];
+    var pulls = 0;
+    var stops = 0;
+    late String eventStream;
+    final adapter = await start((path, body) {
+      if (path == _mailbox) {
+        switch (body['type']) {
+          case 'open':
+            expect(body['endpoint'], r'$events');
+            expect(body['payload'], {'args': {}});
+            eventStream = body['id'] as String;
+            return _reply({'opened': true});
+          case 'next':
+            expect(body['id'], eventStream);
+            return switch (++pulls) {
+              1 => _item({'type': 'ready', 'clientId': hostClientId, 'host': {'home': '/fixture'}}),
+              2 => _item({
+                'type': 'waterfall',
+                'event': 'approval/request',
+                'eventId': eventId,
+                'agentId': _sessionId,
+                'request': {'toolName': 'workspace_create_text', 'callId': 'fixture-tool'},
+              }),
+              _ => pendingEvent.future,
+            };
+          case 'close':
+            expect(body['id'], eventStream);
+            if (!pendingEvent.isCompleted) pendingEvent.complete(_reply({'done': true}));
+            return _reply({'closed': true});
+        }
+      }
+      final method = body['method'] as String;
+      rpcMethods.add(method);
+      expect(path, '/api/$method');
+      switch (method) {
+        case r'$events/result':
+          expect(body['payload'], {
+            'args': {
+              'clientId': hostClientId,
+              'eventId': eventId,
+              'outcome': {'kind': 'result', 'value': 'allowed-once'},
+            },
+          });
+          return _rpcReply(body, {'ok': true});
+        case 'session/cancel':
+          expect(body['payload'], {'args': {'request': {'sessionId': _sessionId}}});
+          return _rpcReply(body, {'ok': true, 'value': {'accepted': true}});
+        default:
+          fail('unexpected RPC: $method');
+      }
+    }, stop: () => stops++);
+    final client = DshClient.withCarrier(adapter, muxOptions: muxOptions);
+    addTearDown(client.close);
+    final approval = client.mux.hostEvents.where((event) => event is ApprovalRequestedEvent).first.timeout(deadline);
+    expect((await client.mux.start(timeout: deadline)).clientId, hostClientId);
+    final event = await approval as ApprovalRequestedEvent;
+    final request = event.request;
+    expect(request.eventId, eventId);
+    expect(request.toolName, 'workspace_create_text');
+    expect(client.mux.pendingRequests, hasLength(1));
+    expect(rpcMethods, isEmpty);
+    await client.respondApproval(request, ApprovalDecision.allowOnce);
+    expect(client.mux.pendingRequests, isEmpty);
+    await client.cancel(_sessionId);
+    expect(rpcMethods, [r'$events/result', 'session/cancel']);
+    await client.close();
+    expect(stops, 1);
+  });
+
+  test('mux cancel drops late items and a replacement link can complete on the same native generation', () async {
+    final nextSeen = Completer<void>();
+    final nextReply = Completer<Object?>();
+    final followClosed = Completer<void>();
+    final streamCommands = <String>[];
+    var stops = 0;
+    var opens = 0;
+    var replacementPulls = 0;
+    late Object? nativeId;
+    final adapter = await start((path, body) {
+      expect(path, _mailbox);
+      final command = body['type'] as String;
+      streamCommands.add(command);
+      if (command == 'open') {
+        expect(body['endpoint'], 'session/follow');
+        expect(body['payload'], {'args': _followArgs});
+        if (opens++ != 0) expect(body['id'], isNot(nativeId));
+        nativeId = body['id'];
+        expect(nativeId, matches(RegExp(r'^s[0-9a-f]{32}$')));
+        return _reply({'opened': true});
+      }
+      expect(body['id'], nativeId);
+      if (command == 'next') {
+        if (opens == 2) return ++replacementPulls == 1 ? _item(null) : _reply({'done': true});
+        nextSeen.complete();
+        return nextReply.future;
+      }
+      expect(command, 'close');
+      expect(nextReply.isCompleted, isFalse);
+      followClosed.complete();
+      return _reply({'closed': true});
+    }, stop: () => stops++);
+    addTearDown(adapter.close);
+    expect(adapter.supportsUplink, isFalse);
+    final link = await adapter.openLink(muxOptions);
+    final frames = <Map<String, Object?>>[];
+    link.start(onFrame: frames.add, onLost: (_, _) => fail('cancel lost the link'));
+    link.open('donor-stream', 'session/follow', {'args': _followArgs});
+    await nextSeen.future.timeout(deadline);
+    link.cancel('donor-stream');
+    link.cancel('donor-stream');
+    await followClosed.future.timeout(deadline);
+    nextReply.complete(_item('late item'));
+    await Future<void>.delayed(Duration.zero);
+    await link.close(1000, 'fixture');
+    expect(frames, isEmpty);
+    expect(streamCommands, ['open', 'next', 'close']);
+
+    final replacement = await adapter.openLink(muxOptions);
+    final ended = Completer<void>();
+    replacement.start(
+      onFrame: (frame) {
+        frames.add(frame);
+        if (frame['type'] == 'end') ended.complete();
+      },
+      onLost: (_, _) => fail('normal logical completion lost the link'),
+    );
+    replacement.open('donor-stream', 'session/follow', {'args': _followArgs});
+    await ended.future.timeout(deadline);
+    await replacement.close(1000, 'fixture');
+    expect(frames, [
+      {'type': 'item', 'streamId': 'donor-stream', 'value': null},
+      {'type': 'end', 'streamId': 'donor-stream'},
+    ]);
+    expect(streamCommands, ['open', 'next', 'close', 'open', 'next', 'next']);
+    expect(stops, 0);
+    await adapter.close();
+    expect(stops, 1);
+  });
+
+  test('a logical refusal is an error frame; a stale generation loses the link only once', () async {
+    final adapter = await start((path, body) {
+      expect(path, _mailbox);
+      if (body['type'] == 'close') return _reply({'closed': true});
+      expect(body['type'], 'open');
+      if (body['endpoint'] == 'session/follow') return _reply({}, status: 500);
+      expect(body['endpoint'], r'$events');
+      throw PlatformException(code: 'IOS_OFFICIAL_GENERATION_STALE');
+    });
+    addTearDown(adapter.close);
+    final link = await adapter.openLink(muxOptions);
+    final failed = Completer<Map<String, Object?>>();
+    final lost = Completer<Object?>();
+    link.start(onFrame: failed.complete, onLost: (_, cause) => lost.complete(cause));
+    link.open('follow', 'session/follow', {'args': _followArgs});
+    expect(await failed.future.timeout(deadline), {
+      'type': 'error',
+      'streamId': 'follow',
+      'error': {'code': 'IOS_OFFICIAL_STATUS', 'message': 'IOS_OFFICIAL_STATUS', 'details': {'status': 500}},
+    });
+    expect(lost.isCompleted, isFalse);
+    link.open('events', r'$events', {'args': <String, Object?>{}});
+    expect(await lost.future.timeout(deadline), isA<DshCarrierRefusedException>());
+    await expectLater(adapter.openLink(muxOptions), throwsA(isA<DshCarrierRefusedException>()));
+    await link.close(1000, 'fixture');
+  });
+}

@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		D510C0057A688A1C00000001 /* IosImageNormalizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D510C0057A688A1C00000002 /* IosImageNormalizerTests.swift */; };
 		D510C0017A688A1C00000001 /* chat-ci-entry.cjs in Resources */ = {isa = PBXBuildFile; fileRef = D510C0017A688A1C00000002 /* chat-ci-entry.cjs */; };
 		D510C0027A688A1C00000001 /* official-web-bridge.js in Resources */ = {isa = PBXBuildFile; fileRef = D510C0027A688A1C00000002 /* official-web-bridge.js */; };
 		D510C0037A688A1C00000001 /* dsh-official-host-ci in Resources */ = {isa = PBXBuildFile; fileRef = D510C0037A688A1C00000002 /* dsh-official-host-ci */; };
@@ -45,6 +46,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		D510C0057A688A1C00000002 /* IosImageNormalizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IosImageNormalizerTests.swift; sourceTree = "<group>"; };
 		D510C0017A688A1C00000002 /* chat-ci-entry.cjs */ = {isa = PBXFileReference; lastKnownFileType = text; name = "chat-ci-entry.cjs"; path = "../../runtime/ios/chat-ci-entry.cjs"; sourceTree = SOURCE_ROOT; };
 		D510C0027A688A1C00000002 /* official-web-bridge.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "official-web-bridge.js"; path = "../../runtime/ios/official-web-bridge.js"; sourceTree = SOURCE_ROOT; };
 		D510C0037A688A1C00000002 /* dsh-official-host-ci */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "dsh-official-host-ci"; sourceTree = "<group>"; };
@@ -82,6 +84,7 @@
 			isa = PBXGroup;
 			children = (
 				331C807B294A618700263BE5 /* RunnerTests.swift */,
+				D510C0057A688A1C00000002 /* IosImageNormalizerTests.swift */,
 				D510C0017A688A1C00000002 /* chat-ci-entry.cjs */,
 				D510C0027A688A1C00000002 /* official-web-bridge.js */,
 				D510C0037A688A1C00000002 /* dsh-official-host-ci */,
@@ -284,6 +287,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				331C808B294A63AB00263BE5 /* RunnerTests.swift in Sources */,
+				D510C0057A688A1C00000001 /* IosImageNormalizerTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
