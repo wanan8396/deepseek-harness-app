@@ -198,7 +198,8 @@ public final class IosLocalEnginePlugin: NSObject, FlutterPlugin {
     let compatible = report?["runtimeCompatible"] as? Bool ?? false
     return [
       "state": state, "nodeVersion": versions["node"] as? String ?? "",
-      "dshVersion": "0.2.2-rc.3", "requiredNode": ">=24.9.0",
+      "dshVersion": IosOfficialWebAssets.pinnedEngineVersion() ?? "",
+      "requiredNode": IosOfficialWebAssets.pinnedNodeRequirement() ?? "",
       "compatible": compatible, "engineReady": false,
       "reason": reason ?? (state == "probeReady" && !compatible ? "node_capabilities" : ""),
       "report": report ?? [:], "appBackgrounded": UIApplication.shared.applicationState == .background,

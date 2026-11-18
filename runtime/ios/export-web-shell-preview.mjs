@@ -31,7 +31,8 @@ const seed = resolve(process.argv[2]);
 const output = resolve(process.argv[3]);
 const auditedHost = resolve(process.argv[4]);
 await assert.rejects(lstat(output), { code: 'ENOENT' });
-const lock = await readFile(new URL('../locks/dsh-0.2.2-rc.3/package-lock.json', import.meta.url));
+const { engine } = JSON.parse(await readFile(new URL('./requirements.json', import.meta.url)));
+const lock = await readFile(new URL(`../../${engine.lockfile}`, import.meta.url));
 assert((await readFile(join(seed, 'package-lock.json'))).equals(lock));
 const locked = JSON.parse(lock).packages;
 const pathFor = (pkg, path) => join(seed, 'node_modules', pkg, path);
@@ -55,7 +56,7 @@ try {
     const key = `node_modules/${pkg}`;
     const manifest = JSON.parse(await readFile(pathFor(pkg, 'package.json')));
     assert.equal(manifest.name, pkg);
-    assert.equal(manifest.version, '0.2.2-rc.3');
+    assert.equal(manifest.version, engine.version);
     assert.equal(manifest.version, locked[key].version);
     assert.equal(manifest.dsh.client.platform, 'web');
     assert.equal(manifest.license, 'MIT');
@@ -68,7 +69,7 @@ try {
   await copyFile(join(auditedHost, 'sqlite-session-persistence.mjs'), join(seed, 'sqlite-session-persistence.mjs'));
   host = await createOfficialHost({ seed, stateDirectory: join(work, 'state'), clientPackages: packages });
   const graph = host.clientGraph();
-  assert.equal(graph.release.version, '0.2.2-rc.3');
+  assert.equal(graph.release.version, engine.version);
   assert.equal(graph.entries.length, packages.length);
   assert.deepEqual(new Set(graph.entries.map(row => row.id)), new Set(packages));
   for (const row of graph.entries) {

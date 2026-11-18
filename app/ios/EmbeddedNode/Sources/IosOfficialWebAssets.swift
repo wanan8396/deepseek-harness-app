@@ -78,13 +78,33 @@ public final class IosOfficialWebAssets: NSObject, WKURLSchemeHandler {
   private let lock = NSLock()
   private var served: Set<String> = []
 
+  private struct EnginePin: Decodable {
+    struct Engine: Decodable { let version: String; let node: String }
+    let engine: Engine
+  }
+
+  // Read the same declared upstream version which the exporter verifies against
+  // the official npm lock. This file is part of the signed framework bundle.
+  public static func pinnedEngineVersion() -> String? { enginePin()?.version }
+
+  static func pinnedNodeRequirement() -> String? { enginePin()?.node }
+
+  private static func enginePin() -> EnginePin.Engine? {
+    let bundle = Bundle(for: IosOfficialWebAssets.self).bundleURL
+    guard let data = try? previewFile(bundle.appendingPathComponent("requirements.json"), limit: 16 * 1024),
+          let pin = try? JSONDecoder().decode(EnginePin.self, from: data),
+          matches(pin.engine.version, #"\A[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*)?\z"#) else { return nil }
+    return pin.engine
+  }
+
   private static func stockAssets(in bundle: URL) -> [String: Asset] {
+    guard let version = pinnedEngineVersion() else { return [:] }
     let root = bundle.appendingPathComponent("dsh-web-frontend", isDirectory: true)
     let manifest = try? JSONDecoder().decode(Manifest.self,
       from: Data(contentsOf: root.appendingPathComponent("distribution-manifest.json")))
     var assets: [String: Asset] = [:]
     if let manifest = manifest, manifest.package == "@deepseek-ai/dsh-web-frontend",
-       manifest.version == "0.2.2-rc.3" {
+       manifest.version == version {
       for entry in manifest.files where Self.bounded(entry.path, entry.bytes) {
         guard let type = Self.mime[(entry.path as NSString).pathExtension] else { continue }
         assets["/" + entry.path] = Asset(url: root.appendingPathComponent(entry.path), bytes: entry.bytes, contentType: type)
@@ -97,9 +117,10 @@ public final class IosOfficialWebAssets: NSObject, WKURLSchemeHandler {
     let bundle = Bundle(for: IosOfficialWebAssets.self).bundleURL
     var assets = Self.stockAssets(in: bundle)
     let bootstrap = bundle.appendingPathComponent("dsh-web-bootstrap", isDirectory: true)
-    if let data = try? Data(contentsOf: bootstrap.appendingPathComponent("distribution-manifest.json")),
+    if let version = Self.pinnedEngineVersion(),
+       let data = try? Data(contentsOf: bootstrap.appendingPathComponent("distribution-manifest.json")),
        let manifest = try? JSONDecoder().decode(Bootstrap.self, from: data),
-       manifest.package == "@deepseek-ai/dsh-client-modules", manifest.version == "0.2.2-rc.3",
+       manifest.package == "@deepseek-ai/dsh-client-modules", manifest.version == version,
        manifest.schemaVersion == 1, manifest.index.path == "index.html", Self.bounded(manifest.index.path, manifest.index.bytes),
        manifest.resources.count == 2, !manifest.cspScriptHashes.isEmpty,
        manifest.cspScriptHashes.allSatisfy({ $0.range(of: #"^sha256-[A-Za-z0-9+/]{43}=$"#, options: .regularExpression) != nil }) {
@@ -137,7 +158,7 @@ public final class IosOfficialWebAssets: NSObject, WKURLSchemeHandler {
 
   private static func previewAssets(in root: URL) throws -> [String: Asset] {
     let invalid = URLError(.cannotDecodeContentData)
-    guard root.isFileURL else { throw invalid }
+    guard root.isFileURL, let version = pinnedEngineVersion() else { throw invalid }
     let bundles = root.appendingPathComponent("bundles", isDirectory: true)
     for directory in [root, bundles] {
       let values = try directory.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
@@ -146,7 +167,7 @@ public final class IosOfficialWebAssets: NSObject, WKURLSchemeHandler {
     let manifestURL = root.appendingPathComponent("distribution-manifest.json")
     let manifest = try JSONDecoder().decode(Preview.self, from: previewFile(manifestURL, limit: 1024 * 1024))
     guard manifest.schemaVersion == 1, manifest.stage == "official-shell-preview", !manifest.officialUIReady,
-          manifest.graph.release.version == "0.2.2-rc.3", manifest.graph.entries.count >= 20,
+          manifest.graph.release.version == version, manifest.graph.entries.count >= 20,
           manifest.index.path == "index.html", (20...128).contains(manifest.resources.count) else { throw invalid }
 
     var ids: Set<String> = []

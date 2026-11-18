@@ -5,6 +5,8 @@ import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import requirements from './requirements.json' with { type: 'json' };
+const { engine } = requirements;
 
 // GitHub desktop prerequisite only. The identical probe must also execute in
 // the iOS App; orderly root close/reopen is not process death or App-kill proof.
@@ -26,9 +28,9 @@ try {
   assert.equal(manifest.distribution, 'ios-adapted-persistence-probe');
   assert.equal(manifest.phase, 'persistence');
   assert.equal(manifest.engineReady, false);
-  assert.equal(manifest.engineVersion, '0.2.2-rc.3');
+  assert.equal(manifest.engineVersion, engine.version);
   const { runPersistenceProbe, bootPersistenceBounded } = await import(pathToFileURL(join(bundle, 'persistence-probe.mjs')).href);
-  const report = await runPersistenceProbe(directory, bundle);
+  const report = await runPersistenceProbe(directory, bundle, engine.version);
   console.log(JSON.stringify({ environment: 'desktop-node-not-ios', ...report }));
   assertBoundary(report);
   for (const key of checks) assert.equal(report[key], true, `IOS_PERSISTENCE_GATE_FAILED:${key}:${report.stage}`);
@@ -97,7 +99,7 @@ try {
 
   // Invalid input must remain red, including checks that previously passed.
   // Neither a real database nor a model fallback may be created for this call.
-  const invalid = await runPersistenceProbe('relative-directory', bundle);
+  const invalid = await runPersistenceProbe('relative-directory', bundle, engine.version);
   assertBoundary(invalid);
   for (const key of checks) assert.equal(invalid[key], false, `IOS_PERSISTENCE_INVALID_INPUT_GREEN:${key}`);
   assert.equal(invalid.stage, 'input');

@@ -4,7 +4,8 @@
     "package": "@deepseek-ai/dsh",
     "version": "0.2.2-rc.3",
     "node": ">=24.9.0",
-    "lockfile": "runtime/locks/dsh-0.2.2-rc.3/package-lock.json"
+    "lockfile": "runtime/locks/dsh-0.2.2-rc.3/package-lock.json",
+    "webReleaseCommit": "6b729fe"
   },
   "nodeMobile": {
     "version": "24.22.1-0",

@@ -39,7 +39,7 @@ export async function bootBounded(boot, ...args) {
 
 /** Executes supplier AgentLoop logic with only the external model replaced by a
  * deterministic offline adapter. It deliberately mounts no persistence backend. */
-export async function runCoreProbe(privateDir, bundleDir) {
+export async function runCoreProbe(privateDir, bundleDir, expectedVersion) {
   const report = { ...Object.fromEntries(CHECKS.map((key) => [key, false])),
     ephemeral: true, engineReady: false, modelKind: 'offline-fixture', stage: 'input', errorCode: null };
   let work;
@@ -53,7 +53,7 @@ export async function runCoreProbe(privateDir, bundleDir) {
       if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('IOS_CORE_INPUT_INVALID');
     }
     const manifest = JSON.parse(await readFile(join(bundleDir, 'distribution-manifest.json'), 'utf8'));
-    if (manifest.distribution !== 'ios-adapted-core-probe' || manifest.engineVersion !== '0.2.2-rc.3') {
+    if (manifest.distribution !== 'ios-adapted-core-probe' || manifest.engineVersion !== expectedVersion) {
       throw new Error('IOS_CORE_DISTRIBUTION_INVALID');
     }
     report.stage = 'import';

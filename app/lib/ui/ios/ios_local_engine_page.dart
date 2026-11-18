@@ -18,6 +18,8 @@ class IosLocalProbeStatus {
   const IosLocalProbeStatus({
     required this.state,
     required this.compatible,
+    required this.dshVersion,
+    required this.requiredNode,
     this.nodeVersion,
     this.reason,
     this.capabilities = const {},
@@ -27,8 +29,8 @@ class IosLocalProbeStatus {
     this.appBackgrounded = false,
   });
 
-  static const dshVersion = '0.2.2-rc.3';
-  static const requiredNode = '>=24.9.0';
+  static final _releasePattern = RegExp(r'^\d+\.\d+\.\d+(?:-[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*)?$');
+  static final _nodeFloorPattern = RegExp(r'^>=\d+\.\d+\.\d+$');
   static const capabilityKeys = [
     'filesystemWriteRead',
     'intl',
@@ -84,10 +86,14 @@ class IosLocalProbeStatus {
     if (raw is! Map ||
         raw['engineReady'] != false ||
         raw['compatible'] is! bool ||
-        raw['appBackgrounded'] is! bool ||
-        raw['dshVersion'] != dshVersion ||
-        raw['requiredNode'] != requiredNode) {
+        raw['appBackgrounded'] is! bool) {
       throw const FormatException('invalid iOS probe status');
+    }
+    final version = raw['dshVersion'];
+    final nodeFloor = raw['requiredNode'];
+    if (version is! String || version.length > 48 || !_releasePattern.hasMatch(version) ||
+        nodeFloor is! String || nodeFloor.length > 32 || !_nodeFloorPattern.hasMatch(nodeFloor)) {
+      throw const FormatException('invalid iOS engine version');
     }
     final state = switch (raw['state']) {
       'idle' => IosProbeState.idle,
@@ -120,6 +126,8 @@ class IosLocalProbeStatus {
     return IosLocalProbeStatus(
       state: state,
       compatible: raw['compatible'] as bool,
+      dshVersion: version,
+      requiredNode: nodeFloor,
       nodeVersion: node is String && node.isNotEmpty ? node : null,
       reason: reason,
       capabilities: {
@@ -136,6 +144,8 @@ class IosLocalProbeStatus {
 
   final IosProbeState state;
   final bool compatible;
+  final String dshVersion;
+  final String requiredNode;
   final String? nodeVersion;
   final IosProbeReason? reason;
   final Map<String, bool> capabilities;
@@ -450,9 +460,9 @@ class _IosLocalEnginePageState extends State<IosLocalEnginePage> {
                         const Divider(height: 32),
                         Text(l10n.iosLocalNodeVersion(status?.nodeVersion ?? l10n.iosLocalNotDetected)),
                         const SizedBox(height: 6),
-                        Text(l10n.iosLocalRequiredNode(IosLocalProbeStatus.requiredNode)),
+                        if (_status case final status?) Text(l10n.iosLocalRequiredNode(status.requiredNode)),
                         const SizedBox(height: 6),
-                        Text(l10n.iosLocalDshVersion(IosLocalProbeStatus.dshVersion)),
+                        if (_status case final status?) Text(l10n.iosLocalDshVersion(status.dshVersion)),
                         const SizedBox(height: 16),
                         Text(
                           l10n.iosLocalDiagnosticsTitle,

@@ -14,7 +14,8 @@ import tempfile
 import urllib.request
 import zipfile
 
-ROOT = Path(__file__).resolve().parents[1]
+from ios_engine_pin import ROOT, validate_lock
+
 PINNED_URL = 'https://github.com/fogtape/nodejs-mobile/releases/download/v24.22.1-0/nodejs-mobile-ios-24.22.1-0.zip'
 PINNED_SHA256 = '3fa1b8fb0720768b01c2e0dae3a17e788476e8c1613a1d9a54e206793b45326e'
 PINNED_BYTES = 62732962
@@ -28,14 +29,10 @@ class PreparationError(ValueError):
 
 def load_requirements(root: Path = ROOT) -> dict:
     requirements = json.loads((root / 'runtime/ios/requirements.json').read_text('utf-8'))
-    engine = requirements['engine']
-    if engine['lockfile'] != 'runtime/locks/dsh-0.2.2-rc.3/package-lock.json':
-        raise PreparationError('ENGINE_LOCK_PATH_MISMATCH')
-    lock = json.loads((root / engine['lockfile']).read_text('utf-8'))
-    package = lock['packages']['node_modules/' + engine['package']]
-    if (engine['package'] != '@deepseek-ai/dsh' or engine['version'] != package['version']
-            or engine['node'] != package['engines']['node'] or engine['node'] != '>=24.9.0'):
-        raise PreparationError('ENGINE_LOCK_REQUIREMENTS_MISMATCH')
+    try:
+        validate_lock(root)
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        raise PreparationError(str(error)) from error
     mobile = requirements['nodeMobile']
     if (mobile['url'], mobile['sha256'], mobile['bytes']) != (PINNED_URL, PINNED_SHA256, PINNED_BYTES):
         raise PreparationError('NODE_MOBILE_PIN_MISMATCH')

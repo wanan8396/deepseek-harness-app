@@ -3,6 +3,8 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import requirements from './requirements.json' with { type: 'json' };
+const { engine } = requirements;
 
 // Desktop CI prerequisite. The same probe runs again in the actual iOS App
 // process; this deterministic provider test is not a real remote model call.
@@ -10,7 +12,7 @@ const bundle = resolve(process.argv[2]);
 const directory = await mkdtemp(join(tmpdir(), 'dsh-ios-core-desktop-'));
 try {
   const { runCoreProbe, bootBounded } = await import(pathToFileURL(join(bundle, 'core-probe.mjs')).href);
-  const report = await runCoreProbe(directory, bundle);
+  const report = await runCoreProbe(directory, bundle, engine.version);
   console.log(JSON.stringify({ environment: 'desktop-node-not-ios', ...report }));
   for (const key of ['coreBooted', 'servicesVerified', 'firstTurnStreamed', 'secondTurnHistoryVerified',
     'cancellationSettled', 'errorSettled', 'disposeVerified', 'badBaselineRejected']) {
@@ -21,7 +23,7 @@ try {
   assert.equal(report.modelKind, 'offline-fixture');
   assert.equal(report.errorCode, null);
   assert.equal(report.stage, 'complete');
-  const bad = await runCoreProbe('relative-directory', bundle);
+  const bad = await runCoreProbe('relative-directory', bundle, engine.version);
   assert.equal(bad.coreBooted, false);
   assert.equal(bad.engineReady, false);
   assert.notEqual(bad.errorCode, null);

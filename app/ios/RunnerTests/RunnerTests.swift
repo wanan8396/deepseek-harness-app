@@ -372,7 +372,7 @@ final class RunnerTests: XCTestCase {
         """)
       let entries = initial["entries"] as? Int
       _ = try XCTUnwrap(entries == 28 ? entries : nil, "Expected the shipped 28-entry graph, got \(initial)")
-      XCTAssertEqual(initial["release"] as? String, "0.2.2-rc.3")
+      XCTAssertEqual(initial["release"] as? String, try XCTUnwrap(IosOfficialWebAssets.pinnedEngineVersion()))
       XCTAssertEqual(initial["carrier"] as? Bool, true)
       let session = try XCTUnwrap(initial["session"] as? String)
       evidence["graphEntries"] = entries
@@ -844,7 +844,7 @@ final class RunnerTests: XCTestCase {
     let state = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any])
     XCTAssertEqual(state["mode"] as? String, "live", text)
     XCTAssertEqual(state["entries"] as? [String], ["@deepseek-ai/dsh-client-modules"], text)
-    XCTAssertEqual((state["release"] as? [String: String])?["version"], "0.2.2-rc.3", text)
+    XCTAssertEqual((state["release"] as? [String: String])?["version"], try XCTUnwrap(IosOfficialWebAssets.pinnedEngineVersion()), text)
     XCTAssertEqual(state["bootVisible"] as? Bool, true, text)
     XCTAssertEqual(state["composerVisible"] as? Bool, false, text)
     XCTAssertTrue(assets.servedPaths.contains { $0.hasPrefix("/plugins/??@deepseek-ai/dsh-client-modules/client.js&rev=") },

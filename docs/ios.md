@@ -28,6 +28,12 @@
 
 该框架是第三方移植，不是 Apple 或 Node.js 官方 iOS 发行版；固定版本和通过探针都不等于已验证 DSH 所有模块。Node/框架及其第三方完整许可证固定为 [NodeMobile-LICENSE.txt](../runtime/ios/NodeMobile-LICENSE.txt)，随 App 一起打包；来源为其 [LICENSE](https://github.com/fogtape/nodejs-mobile/blob/b5bcc8d8e70f055333cd5efc317e3eb55bf0c9a5/LICENSE)。
 
+## 跟随官方引擎版本
+
+Flutter 是客户端，iOS 宿主提供传输、存储和系统能力。AgentLoop、Session、Tools、审批和 API Gateway 均从官方 `@deepseek-ai/dsh` 发行依赖解析，不在 App 内维护一套替代引擎。
+
+升级先新增对应上游发行的锁目录，然后修改 [iOS 引擎清单](../runtime/ios/requirements.json) 的版本、锁路径、Node 要求和上游 Web release commit。GitHub 只安装该锁指定的版本，核验官方 npm 来源、完整性和实际入包版本，再执行 API、工具、模拟器和 IPA 门槛。兼容的上游发行无需修改 Flutter UI；官方协议变化、图像/命令原生能力或 Node ABI 变化则需要更新相应接入层。现阶段以重构建和签名的 IPA 更新引擎，不在手机上热替换可执行文件。
+
 ## 直接在 GitHub 构建
 
 [iOS Actions](../.github/workflows/ios.yml) 在独立分支推送后运行，也支持手动触发：

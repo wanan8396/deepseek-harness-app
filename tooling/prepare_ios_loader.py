@@ -14,8 +14,11 @@ import re
 import tempfile
 from urllib.parse import urlparse
 
-ROOT = Path(__file__).resolve().parents[1]
-LOCK = ROOT / 'runtime/locks/dsh-0.2.2-rc.3/package-lock.json'
+from ios_engine_pin import ROOT, read_pin
+
+ENGINE = read_pin()
+LOCK = ROOT / ENGINE['lockfile']
+ENGINE_VERSION = ENGINE['version']
 DEFAULT_OUTPUT = ROOT / 'app/ios/EmbeddedNode/Resources/dsh-loader'
 DEFAULT_CORE_OUTPUT = DEFAULT_OUTPUT.with_name('dsh-core')
 DEFAULT_PERSISTENCE_OUTPUT = DEFAULT_OUTPUT.with_name('dsh-persistence')
@@ -339,7 +342,7 @@ def prepare(seed: Path, destination: Path, check: bool = False, phase: str = 'lo
     if (seed / 'package-lock.json').is_symlink() or (seed / 'package-lock.json').read_bytes() != lock_bytes:
         raise ExportError('SEED_LOCK_BYTES_MISMATCH')
     lock = json.loads(lock_bytes)
-    if lock['packages']['node_modules/@deepseek-ai/dsh-app-boot']['version'] != '0.2.2-rc.3':
+    if lock['packages']['node_modules/@deepseek-ai/dsh-app-boot']['version'] != ENGINE_VERSION:
         raise ExportError('ENGINE_VERSION_MISMATCH')
     selected, omitted = dependency_closure(seed, lock, phase)
     omitted_exports = []
@@ -371,7 +374,7 @@ def prepare(seed: Path, destination: Path, check: bool = False, phase: str = 'lo
                       or key.split('node_modules/')[-1].startswith((
                           'node-addon-require-builtin', 'node-addon-native-custom-loader'))]
     manifest = {
-        'schemaVersion': 1, 'engineVersion': '0.2.2-rc.3',
+        'schemaVersion': 1, 'engineVersion': ENGINE_VERSION,
         'distribution': 'ios-local-text-chat' if phase == 'chat' else f'ios-adapted-{phase}-probe',
         'sourceLockSHA256': sha256(lock_bytes),
         'integrityVerification': 'Seed must be created by npm ci --ignore-scripts; exporter verifies exact lock and package identities, then hashes output files',

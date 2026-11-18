@@ -6,13 +6,14 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 
 // S1 is a cloud-built, offline bootstrap fixture, not the Web Host profile.
-const VERSION = '0.2.2-rc.3';
+const { engine } = JSON.parse(await readFile(new URL('./requirements.json', import.meta.url)));
+const VERSION = engine.version;
 const PACKAGE = '@deepseek-ai/dsh-client-modules';
-const RELEASE = { version: VERSION, commit: '6b729fe' };
+const RELEASE = { version: VERSION, commit: engine.webReleaseCommit };
 const APP_BOOT = '@deepseek-ai/dsh-app-boot';
 const FRONTEND = '@deepseek-ai/dsh-web-frontend';
 const WEBSERVER = '@deepseek-ai/dsh-host-webserver';
-const LOCK = fileURLToPath(new URL(`../locks/dsh-${VERSION}/package-lock.json`, import.meta.url));
+const LOCK = fileURLToPath(new URL(`../../${engine.lockfile}`, import.meta.url));
 const MIME = 'text/javascript; charset=utf-8';
 const DOCUMENT_URL = 'dsh-app://bundle/';
 const REVISION = /^[0-9a-f]{12}$/;

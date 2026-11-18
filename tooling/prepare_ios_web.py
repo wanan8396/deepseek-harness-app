@@ -9,10 +9,9 @@ from pathlib import Path
 import shutil
 import tempfile
 
-from prepare_ios_loader import LOCK, locked_package, regular_directory
+from prepare_ios_loader import ENGINE_VERSION as VERSION, LOCK, locked_package, regular_directory
 
 PACKAGE = '@deepseek-ai/dsh-web-frontend'
-VERSION = '0.2.2-rc.3'
 ALLOWED = {'.css', '.html', '.jpeg', '.jpg', '.js', '.json', '.mjs', '.png', '.ico', '.svg', '.ttf', '.txt', '.wasm', '.webmanifest', '.webp', '.woff', '.woff2'}
 
 

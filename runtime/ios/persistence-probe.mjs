@@ -46,7 +46,7 @@ export function bootPersistenceBounded(boot, args, milliseconds = 8000) {
 
 /** File-backed SQLite and official AgentLoop close/reopen verification.
  * This is not an App-kill test, a live model, or a user-facing engine. */
-export async function runPersistenceProbe(privateDir, bundleDir) {
+export async function runPersistenceProbe(privateDir, bundleDir, expectedVersion) {
   const report = { ...Object.fromEntries(CHECKS.map((key) => [key, false])),
     engineReady: false, modelKind: 'offline-fixture', persistentStore: true,
     stage: 'input', errorCode: null };
@@ -72,7 +72,7 @@ export async function runPersistenceProbe(privateDir, bundleDir) {
     }
     const manifest = JSON.parse(await readFile(join(bundleDir, 'distribution-manifest.json'), 'utf8'));
     requireCheck(manifest.distribution === 'ios-adapted-persistence-probe'
-      && manifest.phase === 'persistence' && manifest.engineVersion === '0.2.2-rc.3'
+      && manifest.phase === 'persistence' && manifest.engineVersion === expectedVersion
       && manifest.engineReady === false, 'IOS_PERSISTENCE_DISTRIBUTION_INVALID');
     report.stage = 'import';
     const entryUrl = (name) => pathToFileURL(join(bundleDir, 'node_modules/@deepseek-ai', name, 'lib/index.js')).href;

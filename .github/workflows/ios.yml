@@ -21,13 +21,16 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: '24.22.1'
-      - name: Test exporter without executing supplier packages
-        run: python3 -m unittest discover -s tooling -p test_prepare_ios_loader.py -v
+      - name: Verify upstream version selection and export rules
+        run: |
+          python3 -m unittest discover -s tooling -p test_ios_engine_pin.py -v
+          python3 -m unittest discover -s tooling -p test_prepare_ios_loader.py -v
       - name: Resolve exact official dependency lock into isolated seed
         run: |
           mkdir -p "$RUNNER_TEMP/dsh-ios-seed"
-          cp runtime/locks/dsh-0.2.2-rc.3/package*.json "$RUNNER_TEMP/dsh-ios-seed/"
-          npm ci --prefix "$RUNNER_TEMP/dsh-ios-seed" --ignore-scripts --omit=optional --no-audit --no-fund
+          lock_dir=$(python3 tooling/ios_engine_pin.py lock-directory)
+          cp "$lock_dir"/package.json "$lock_dir"/package-lock.json "$RUNNER_TEMP/dsh-ios-seed/"
+          npm ci --prefix "$RUNNER_TEMP/dsh-ios-seed" --engine-strict --ignore-scripts --omit=optional --no-audit --no-fund
       - name: Export reviewed pure-JS Loader composition
         run: python3 tooling/prepare_ios_loader.py --seed "$RUNNER_TEMP/dsh-ios-seed" --output "$RUNNER_TEMP/dsh-ios-loader"
       - name: Exercise real DSH Loader and bad-baseline rejection

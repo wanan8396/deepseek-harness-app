@@ -123,7 +123,7 @@ async function main(reportPath) {
     if (fs.existsSync(loaderRoot)) {
       try {
         const { runLoaderProbe } = await import(pathToFileURL(path.join(loaderRoot, 'loader-probe.mjs')).href);
-        report.loader = await runLoaderProbe(path.dirname(reportPath), loaderRoot);
+        report.loader = await runLoaderProbe(path.dirname(reportPath), loaderRoot, requirements.engine.version);
       } catch {
         report.loader = { dshLoaderBooted: false, serviceVerified: false, disposeVerified: false,
           badBaselineRejected: false, engineReady: false, stage: 'import', errorCode: 'IOS_DSH_LOADER_PROBE_FAILED' };
@@ -133,7 +133,7 @@ async function main(reportPath) {
     if (fs.existsSync(coreRoot)) {
       try {
         const { runCoreProbe } = await import(pathToFileURL(path.join(coreRoot, 'core-probe.mjs')).href);
-        report.core = await runCoreProbe(path.dirname(reportPath), coreRoot);
+        report.core = await runCoreProbe(path.dirname(reportPath), coreRoot, requirements.engine.version);
       } catch {
         report.core = { coreBooted: false, servicesVerified: false, firstTurnStreamed: false,
           secondTurnHistoryVerified: false, cancellationSettled: false, errorSettled: false,
@@ -146,7 +146,7 @@ async function main(reportPath) {
     if (fs.existsSync(persistenceRoot)) {
       try {
         const { runPersistenceProbe } = await import(pathToFileURL(path.join(persistenceRoot, 'persistence-probe.mjs')).href);
-        report.persistence = await runPersistenceProbe(path.dirname(reportPath), persistenceRoot);
+        report.persistence = await runPersistenceProbe(path.dirname(reportPath), persistenceRoot, requirements.engine.version);
       } catch {
         report.persistence = { storageBooted: false, writerExclusionVerified: false,
           readWhileOwnedVerified: false, atomicAppendVerified: false, flushVerified: false,

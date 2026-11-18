@@ -19,7 +19,7 @@ async function markerMatches(filename, challenge, property) {
 }
 
 /** Run real official Loader lifecycle checks, not a DSH application boot. */
-export async function runLoaderProbe(privateDir, bundleDir) {
+export async function runLoaderProbe(privateDir, bundleDir, expectedVersion) {
   const report = { dshLoaderBooted: false, serviceVerified: false,
     disposeVerified: false, badBaselineRejected: false, engineReady: false,
     stage: 'input', errorCode: null };
@@ -34,7 +34,7 @@ export async function runLoaderProbe(privateDir, bundleDir) {
     }
     const bundle = await realpath(bundleDir);
     const metadata = JSON.parse(await readFile(join(bundle, 'distribution-manifest.json'), 'utf8'));
-    if (metadata.distribution !== 'ios-adapted-loader-probe' || metadata.engineVersion !== '0.2.2-rc.3') {
+    if (metadata.distribution !== 'ios-adapted-loader-probe' || metadata.engineVersion !== expectedVersion) {
       throw new Error('IOS_LOADER_DISTRIBUTION_INVALID');
     }
     report.stage = 'import';

@@ -8,8 +8,9 @@ import { createContext, runInContext } from 'node:vm';
 import { exportWebBootstrap } from './export-web-bootstrap.mjs';
 
 const MODULES = '@deepseek-ai/dsh-client-modules';
-const RELEASE = { version: '0.2.2-rc.3', commit: '6b729fe' };
-const LOCK = new URL('../locks/dsh-0.2.2-rc.3/package-lock.json', import.meta.url);
+const { engine } = JSON.parse(await readFile(new URL('./requirements.json', import.meta.url)));
+const RELEASE = { version: engine.version, commit: engine.webReleaseCommit };
+const LOCK = new URL(`../../${engine.lockfile}`, import.meta.url);
 const sha = (bytes, encoding = 'hex') => createHash('sha256').update(bytes).digest(encoding);
 
 async function checkedFile(directory, record, expectedPath) {
