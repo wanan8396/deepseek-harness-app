@@ -33,7 +33,9 @@ function offset(value, label) {
 }
 
 function sessionId(id) {
-  if (typeof id !== 'string') throw new TypeError('session id must be a string')
+  if (typeof id !== 'string' || !id.isWellFormed()) {
+    throw new TypeError('session id must be a well-formed Unicode string')
+  }
   return id
 }
 
@@ -113,20 +115,34 @@ function privateDirectory(path) {
   return realpathSync(path)
 }
 
+function assertPrivateFile(info) {
+  if (info.isSymbolicLink() || !info.isFile() || info.nlink !== 1) {
+    throw new TypeError('SQLite input must be a regular file with exactly one link')
+  }
+}
+
 function realFile(path) {
-  // Pre-create SQLite inputs with private permissions. The enclosing canonical
-  // App-owned directories are private; reject pre-existing links and special files.
-  const fd = openSync(path, constants.O_RDWR | constants.O_CREAT | constants.O_NOFOLLOW, 0o600)
-  try {
-    if (!fstatSync(fd).isFile()) throw new TypeError('SQLite input must be a regular file')
-    const info = lstatSync(path)
-    if (info.isSymbolicLink() || !info.isFile()) throw new TypeError('SQLite input must not be a symlink')
-    chmodSync(path, 0o600)
-  } finally { closeSync(fd) }
+  // Never raw-open/close an existing SQLite inode: POSIX close on *any* fd
+  // for that inode can release this process's SQLite fcntl locks. Only a new
+  // O_EXCL inode is opened here; existing files are inspected with lstat.
+  try { assertPrivateFile(lstatSync(path)) } catch (error) {
+    if (error?.code !== 'ENOENT') throw error
+    let fd
+    try {
+      fd = openSync(path, constants.O_RDWR | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600)
+    } catch (createError) {
+      if (createError?.code !== 'EEXIST') throw createError
+    }
+    if (fd !== undefined) {
+      try { assertPrivateFile(fstatSync(fd)) } finally { closeSync(fd) }
+    }
+    // Another creator may have won O_EXCL; validate without opening its inode.
+    assertPrivateFile(lstatSync(path))
+  }
+  chmodSync(path, 0o600)
   for (const suffix of ['-journal', '-wal', '-shm']) {
     try {
-      const info = lstatSync(path + suffix)
-      if (info.isSymbolicLink() || !info.isFile()) throw new TypeError('SQLite sidecar must be a regular file')
+      assertPrivateFile(lstatSync(path + suffix))
       chmodSync(path + suffix, 0o600)
     } catch (error) {
       if (error?.code !== 'ENOENT') throw error
