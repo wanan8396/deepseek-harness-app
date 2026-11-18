@@ -250,7 +250,7 @@ class L10nZh extends L10n {
   String get iosLocalProbePassed => '内嵌 Node.js 探针已完成';
 
   @override
-  String get iosLocalProbeCompatible => 'Node.js 版本与已检测能力符合当前要求。DSH 引擎适配仍在验证，尚未启动。';
+  String get iosLocalProbeCompatible => 'Node.js 版本与已检测能力符合当前要求。下方分别显示 DSH 的各项验证结果。';
 
   @override
   String get iosLocalProbeUnavailable => '本地探针尚未就绪';
@@ -289,10 +289,10 @@ class L10nZh extends L10n {
   String get iosLocalNotDetected => '尚未检测';
 
   @override
-  String get iosLocalDshNotStarted => 'DSH 本机引擎未启动';
+  String get iosLocalDshNotStarted => '此版本尚未提供正式聊天';
 
   @override
-  String get iosLocalProbeOnly => '探针通过仅证明内嵌 Node.js 已实际执行，不代表 DSH 已安装、已启动或网页已就绪。';
+  String get iosLocalProbeOnly => '这是本机运行验证版。测试会话会在检查结束后关闭；此提示不是启动故障。请以下方各项检查结果为准。';
 
   @override
   String get iosLocalCapabilitiesTitle => '本次原生能力检测';
@@ -380,6 +380,36 @@ class L10nZh extends L10n {
 
   @override
   String get iosLocalCoreEphemeral => '仅内存存储';
+
+  @override
+  String get iosLocalStorageTitle => '本机会话存储验证';
+
+  @override
+  String get iosLocalStorageDetail => '使用应用沙箱内的临时 SQLite 文件与离线测试模型，检查关闭并重新打开后能否恢复会话历史。测试数据会清理，不是正式聊天记录。';
+
+  @override
+  String get iosLocalStorageBooted => 'SQLite 会话服务启动';
+
+  @override
+  String get iosLocalStorageWriter => '同一会话的并发写入拦截';
+
+  @override
+  String get iosLocalStorageReader => '写入期间读取已提交历史';
+
+  @override
+  String get iosLocalStorageAtomic => '错误批次整批拒绝';
+
+  @override
+  String get iosLocalStorageFlush => '会话写入落盘';
+
+  @override
+  String get iosLocalStorageResume => '关闭重开后恢复聊天历史';
+
+  @override
+  String get iosLocalStorageDispose => '存储资源清理';
+
+  @override
+  String get iosLocalStorageRejected => '损坏日志拦截';
 
   @override
   String get iosLocalBackgroundObservation => '原生层上次读取时，应用处于后台。';

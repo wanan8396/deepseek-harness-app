@@ -563,7 +563,7 @@ abstract class L10n {
   /// No description provided for @iosLocalProbeCompatible.
   ///
   /// In zh, this message translates to:
-  /// **'Node.js 版本与已检测能力符合当前要求。DSH 引擎适配仍在验证，尚未启动。'**
+  /// **'Node.js 版本与已检测能力符合当前要求。下方分别显示 DSH 的各项验证结果。'**
   String get iosLocalProbeCompatible;
 
   /// No description provided for @iosLocalProbeUnavailable.
@@ -629,13 +629,13 @@ abstract class L10n {
   /// No description provided for @iosLocalDshNotStarted.
   ///
   /// In zh, this message translates to:
-  /// **'DSH 本机引擎未启动'**
+  /// **'此版本尚未提供正式聊天'**
   String get iosLocalDshNotStarted;
 
   /// No description provided for @iosLocalProbeOnly.
   ///
   /// In zh, this message translates to:
-  /// **'探针通过仅证明内嵌 Node.js 已实际执行，不代表 DSH 已安装、已启动或网页已就绪。'**
+  /// **'这是本机运行验证版。测试会话会在检查结束后关闭；此提示不是启动故障。请以下方各项检查结果为准。'**
   String get iosLocalProbeOnly;
 
   /// No description provided for @iosLocalCapabilitiesTitle.
@@ -811,6 +811,66 @@ abstract class L10n {
   /// In zh, this message translates to:
   /// **'仅内存存储'**
   String get iosLocalCoreEphemeral;
+
+  /// No description provided for @iosLocalStorageTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'本机会话存储验证'**
+  String get iosLocalStorageTitle;
+
+  /// No description provided for @iosLocalStorageDetail.
+  ///
+  /// In zh, this message translates to:
+  /// **'使用应用沙箱内的临时 SQLite 文件与离线测试模型，检查关闭并重新打开后能否恢复会话历史。测试数据会清理，不是正式聊天记录。'**
+  String get iosLocalStorageDetail;
+
+  /// No description provided for @iosLocalStorageBooted.
+  ///
+  /// In zh, this message translates to:
+  /// **'SQLite 会话服务启动'**
+  String get iosLocalStorageBooted;
+
+  /// No description provided for @iosLocalStorageWriter.
+  ///
+  /// In zh, this message translates to:
+  /// **'同一会话的并发写入拦截'**
+  String get iosLocalStorageWriter;
+
+  /// No description provided for @iosLocalStorageReader.
+  ///
+  /// In zh, this message translates to:
+  /// **'写入期间读取已提交历史'**
+  String get iosLocalStorageReader;
+
+  /// No description provided for @iosLocalStorageAtomic.
+  ///
+  /// In zh, this message translates to:
+  /// **'错误批次整批拒绝'**
+  String get iosLocalStorageAtomic;
+
+  /// No description provided for @iosLocalStorageFlush.
+  ///
+  /// In zh, this message translates to:
+  /// **'会话写入落盘'**
+  String get iosLocalStorageFlush;
+
+  /// No description provided for @iosLocalStorageResume.
+  ///
+  /// In zh, this message translates to:
+  /// **'关闭重开后恢复聊天历史'**
+  String get iosLocalStorageResume;
+
+  /// No description provided for @iosLocalStorageDispose.
+  ///
+  /// In zh, this message translates to:
+  /// **'存储资源清理'**
+  String get iosLocalStorageDispose;
+
+  /// No description provided for @iosLocalStorageRejected.
+  ///
+  /// In zh, this message translates to:
+  /// **'损坏日志拦截'**
+  String get iosLocalStorageRejected;
 
   /// No description provided for @iosLocalBackgroundObservation.
   ///

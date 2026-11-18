@@ -269,7 +269,7 @@ class L10nEn extends L10n {
 
   @override
   String get iosLocalProbeCompatible =>
-      'The Node.js version and checked capabilities meet the current requirements. DSH engine integration is still being verified and has not started.';
+      'The Node.js version and checked capabilities meet the current requirements. Individual DSH verification results are shown below.';
 
   @override
   String get iosLocalProbeUnavailable => 'Local probe is not ready';
@@ -312,11 +312,11 @@ class L10nEn extends L10n {
   String get iosLocalNotDetected => 'Not checked yet';
 
   @override
-  String get iosLocalDshNotStarted => 'On-device DSH engine has not started';
+  String get iosLocalDshNotStarted => 'Chat is not available in this build';
 
   @override
   String get iosLocalProbeOnly =>
-      'A passing probe only proves that embedded Node.js actually executed. It does not mean DSH is installed, started, or serving a ready webpage.';
+      'This build verifies on-device execution. Test sessions close when checks finish. This notice is not a startup error; see the individual results below.';
 
   @override
   String get iosLocalCapabilitiesTitle => 'Native capability checks for this run';
@@ -406,6 +406,37 @@ class L10nEn extends L10n {
 
   @override
   String get iosLocalCoreEphemeral => 'In-memory storage only';
+
+  @override
+  String get iosLocalStorageTitle => 'On-device session storage validation';
+
+  @override
+  String get iosLocalStorageDetail =>
+      'Uses temporary SQLite files in the app sandbox and an offline test model to check that history survives closing and reopening the session. Test data is removed and is not chat history.';
+
+  @override
+  String get iosLocalStorageBooted => 'SQLite session service booted';
+
+  @override
+  String get iosLocalStorageWriter => 'Concurrent writes to one session rejected';
+
+  @override
+  String get iosLocalStorageReader => 'Committed history readable during writes';
+
+  @override
+  String get iosLocalStorageAtomic => 'Invalid append batch rejected atomically';
+
+  @override
+  String get iosLocalStorageFlush => 'Session writes committed to disk';
+
+  @override
+  String get iosLocalStorageResume => 'Chat history recovered after reopening';
+
+  @override
+  String get iosLocalStorageDispose => 'Storage resources released';
+
+  @override
+  String get iosLocalStorageRejected => 'Damaged log rejected';
 
   @override
   String get iosLocalBackgroundObservation => 'The app was backgrounded when the native layer last read its status.';

@@ -82,7 +82,7 @@ async function collectReport(reportPath) {
     reportCompatible: gate.runtimeCompatible,
     probeReady: true,
     engineReady: false,
-    scope: 'embedded-node-loader-and-ephemeral-core-not-user-profile',
+    scope: 'embedded-runtime-dsh-verification-not-user-profile',
     engine: requirements.engine,
     requiredNode: requirements.engine.node,
     versions: { node: process.versions.node, mobile: process.versions.mobile ?? null,
@@ -95,7 +95,7 @@ async function collectReport(reportPath) {
     capabilities,
     ...gate,
     unverified: ['dsh-profile-startup', 'native-addon-require-builtin-ios', 'http-web-and-rpc',
-      'model-request', 'native-tools', 'background-lifecycle'],
+      'model-request', 'native-tools', 'background-lifecycle', 'recovery-after-app-termination'],
   };
 }
 
