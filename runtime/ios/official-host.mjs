@@ -110,7 +110,7 @@ export async function createOfficialHost({ seed, stateDirectory, clientPackages 
     const typert = ctx.get('typert');
     if (!typert) throw new Error('IOS_HOST_TYPERT_MISSING');
     for (const owner of ['@deepseek-ai/dsh-api-remote-access', '@deepseek-ai/dsh-api-session-controller',
-      '@deepseek-ai/dsh-api-workspace-controller']) {
+      '@deepseek-ai/dsh-api-workspace-controller', '@deepseek-ai/dsh-client-file-upload']) {
       const { TYPERT } = await import(entry(owner, 'lib/typert.host.js'));
       ctx.effect(() => typert.register(TYPERT));
     }
@@ -186,8 +186,17 @@ export async function createOfficialHost({ seed, stateDirectory, clientPackages 
       }
       const admitted = appRoutes.admitRequest(request.method, `${url.pathname}${url.search}`, await request.text());
       if (!admitted.ok) return new Response('not available', { status: admitted.status });
+      const signal = AbortSignal.any([request.signal, lifetime.signal]);
+      if (admitted.upload) {
+        // Resolve the exact owned Agent using the upstream controller even for a
+        // dormant Session. Then use the generated FileUpload Typert descriptor
+        // and official staged-receipt service; no raw file/path route is exposed.
+        const resolved = await controller.resolveAgent(admitted.upload.sessionId);
+        if (!resolved?.agent) return new Response('session not available', { status: 404 });
+        signal.throwIfAborted();
+      }
       return shared.fetch(new Request(endpointURL, { method: 'POST', body: admitted.body,
-        headers: { 'content-type': 'application/json' }, signal: AbortSignal.any([request.signal, lifetime.signal]),
+        headers: { 'content-type': 'application/json' }, signal,
       }), peer);
     },
     appWorkspace: appServices?.workspace,

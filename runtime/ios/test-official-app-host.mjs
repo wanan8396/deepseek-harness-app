@@ -41,13 +41,29 @@ try {
   assert.equal((await query('session/create', { request: { cwd: directory } })).status, 403);
   assert.equal((await query('file', {})).status, 404);
   const { sessionId } = await rpc('session/create', { request: {} });
+  const document = 'Original attached text fixture 雪\n';
+  const upload = { agentId: sessionId, request: { name: 'reference.txt', data: Buffer.from(document).toString('base64') } };
+  assert.equal((await query('fileUploads/upload', { ...upload, agentId: 'session-550e8400-e29b-41d4-a716-446655440001' })).status, 403);
+  assert.equal((await query('fileUploads/upload', { ...upload, request: { ...upload.request, name: '../reference.txt' } })).status, 415);
+  assert.equal((await query('fileUploads/upload', { ...upload, request: { ...upload.request, name: 'image.png' } })).status, 415);
+  assert.equal((await query('fileUploads/upload', { ...upload, request: { ...upload.request, data: Buffer.from(apiKey).toString('base64') } })).status, 415);
+  const fileReceipt = await rpc('fileUploads/upload', upload);
+  assert.equal(fileReceipt.file.name, 'reference.txt');
+  assert.equal(fileReceipt.file.bytes, Buffer.byteLength(document));
+  assert.match(fileReceipt.file.attachmentId, /^sha256:[a-f0-9]{64}$/u);
+  const other = await rpc('session/create', { request: {} });
+  const crossSession = await query('session/prompt', { request: { requestId: randomUUID(), sessionId: other.sessionId,
+    mode: 'queue', content: [{ type: 'file', receiptId: fileReceipt.receiptId }] } });
+  assert.equal(crossSession.status, 200);
+  assert.equal((await crossSession.json()).result.ok, false, 'Receipt must be scoped to its originating session');
   const prompt = { requestId: randomUUID(), sessionId, mode: 'queue', content: [{ type: 'text', text: apiKey }] };
   assert.equal((await query('session/prompt', { request: prompt })).status, 400);
   const follow = await host.openStream('session/follow', { args: { request: { address: { kind: 'session', sessionId } } } },
     AbortSignal.any([control.signal, AbortSignal.timeout(4000)]));
   stream = follow[Symbol.asyncIterator]();
   assert.equal((await stream.next()).value.header.id, sessionId);
-  assert.equal((await rpc('session/list', { _request: {} })).items[0].cwd, host.appWorkspace);
+  const sessions = (await rpc('session/list', { _request: {} })).items;
+  assert.equal(sessions.find(row => row.sessionId === sessionId)?.cwd, host.appWorkspace);
 
   let calls = 0;
   const toolId = 'ci-host-approval-1';
@@ -60,6 +76,10 @@ try {
     const body = JSON.parse(init.body);
     assert.equal(body.model, appChannel.channel.modelId);
     assert(!init.body.includes(apiKey));
+    assert.ok(body.messages.some(message => message.role === 'user' && message.content.includes(document)),
+      'Verified text attachment did not reach the actual model adapter');
+    assert.ok(body.messages.every(message => message.role !== 'user' || typeof message.content !== 'string'
+      || !message.content.includes('/attachments/v1/')));
     const response = body.messages.some(message => message.role === 'tool' && message.tool_call_id === toolId)
       ? { delta: { role: 'assistant', content: 'approved-result-fixture' }, finish_reason: 'stop' }
       : { delta: { role: 'assistant', tool_calls: [{ index: 0, id: toolId, type: 'function', function: {
@@ -73,7 +93,8 @@ try {
   eventStream = eventSource[Symbol.asyncIterator]();
   const ready = (await eventStream.next()).value;
   assert.equal(ready.type, 'ready');
-  const sender = await rpc('session/prompt', { request: { ...prompt, requestId: randomUUID(), content: [{ type: 'text', text: 'tool fixture' }] } });
+  const sender = await rpc('session/prompt', { request: { ...prompt, requestId: randomUUID(),
+    content: [{ type: 'text', text: 'tool fixture' }, { type: 'file', receiptId: fileReceipt.receiptId }] } });
   assert.equal(sender.accepted, true);
   let ask;
   while (!ask) {
@@ -97,7 +118,8 @@ try {
   assert.equal(calls, 2);
   assert.deepEqual(attempts, []);
   console.log(JSON.stringify({ officialAppHostPolicyVerified: true, officialModelCatalogVerified: true,
-    privateWorkspaceVerified: true, secretNotAdmitted: true, nativeToolAndEventAnswerVerified: true, noSocketAttempts: true }));
+    privateWorkspaceVerified: true, secretNotAdmitted: true, nativeToolAndEventAnswerVerified: true,
+    officialFileReceiptVerified: true, attachmentContentReachedModel: true, noSocketAttempts: true }));
 } finally {
   control.abort();
   try { await Promise.allSettled([stream?.return?.(), eventStream?.return?.()]); }

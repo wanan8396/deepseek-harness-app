@@ -6,6 +6,7 @@ import {
   CHAT_CHANNEL_PROVIDER, createChatChannelAdapter, guardChatChannelStream, normalizeChatChannel,
 } from './chat-model-channel.mjs';
 import { registerChatWorkspaceTools } from './chat-workspace-tools.mjs';
+import { createOfficialTextMaterializer } from './official-text-attachments.mjs';
 
 const WORKSPACE = 'Workspace';
 const CREATE_TOOL = 'workspace_create_text';
@@ -84,14 +85,15 @@ function approvalDisplay(action) {
 class LifetimeChannelAdapter extends LlmAdapter {
   #adapter;
   #life;
-  constructor(adapter, life) { super(); this.#adapter = adapter; this.#life = life; }
+  #project;
+  constructor(adapter, life, project) { super(); this.#adapter = adapter; this.#life = life; this.#project = project; }
   providerInfo(provider) { return this.#adapter.providerInfo(provider); }
   providerRetryPolicy(provider) { return this.#adapter.providerRetryPolicy(provider); }
   listModels(provider) { return this.#adapter.listModels(provider); }
   resolveModel(provider, model) { return this.#adapter.resolveModel(provider, model); }
   stream(options) {
     const signal = options.signal ? AbortSignal.any([this.#life, options.signal]) : this.#life;
-    return this.#adapter.stream({ ...options, signal });
+    return this.#adapter.stream({ ...this.#project(options), signal });
   }
 }
 
@@ -140,10 +142,11 @@ export async function registerOfficialAppServices(ctx, { workspace, stateDirecto
     fiber = ctx.plugin({ name: 'ios-official-app-services', inject: ['llm', 'tools', 'approval'],
       async apply(scope) {
         scope.effect(() => deactivate);
+        const files = createOfficialTextMaterializer(scope, containsSensitiveText, life);
         scope.on('llm/stream', (options, next) => {
           if (options.provider !== CHAT_CHANNEL_PROVIDER) return next();
           const signal = options.signal ? AbortSignal.any([life, options.signal]) : life;
-          return guardChatChannelStream(next, key, signal, options.tools);
+          return guardChatChannelStream(() => files.run(options, next), key, signal, options.tools);
         }, { prepend: true });
         scope.on('tools/execute', async (exec, next) => {
           if (!TOOLS.has(exec.name)) return next();
@@ -171,7 +174,7 @@ export async function registerOfficialAppServices(ctx, { workspace, stateDirecto
         });
         if (life.aborted) throw failure('IOS_OFFICIAL_APP_SERVICES_CLOSED');
         const adapter = createChatChannelAdapter(directory, route, () => key);
-        scope.llm.registerAdapter([CHAT_CHANNEL_PROVIDER], new LifetimeChannelAdapter(adapter, life));
+        scope.llm.registerAdapter([CHAT_CHANNEL_PROVIDER], new LifetimeChannelAdapter(adapter, life, files.project));
       },
     });
     const active = await fiber;
