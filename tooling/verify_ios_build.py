@@ -30,7 +30,8 @@ def main():
     for name in ['probe.cjs', 'meta-probe.mjs', 'requirements.json', 'NodeMobile-LICENSE.txt']:
         assert (app / 'Frameworks/DshEmbeddedNode.framework' / name).read_bytes() == (root / 'runtime/ios' / name).read_bytes(), name
     for directory, distribution in [('dsh-loader', 'ios-adapted-loader-probe'),
-                                    ('dsh-core', 'ios-adapted-core-probe')]:
+                                    ('dsh-core', 'ios-adapted-core-probe'),
+                                    ('dsh-persistence', 'ios-adapted-persistence-probe')]:
         bundle = app / 'Frameworks/DshEmbeddedNode.framework' / directory
         manifest = json.loads((bundle / 'distribution-manifest.json').read_text())
         assert manifest['distribution'] == distribution

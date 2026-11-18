@@ -18,6 +18,8 @@ ROOT = Path(__file__).resolve().parents[1]
 LOCK = ROOT / 'runtime/locks/dsh-0.2.2-rc.3/package-lock.json'
 DEFAULT_OUTPUT = ROOT / 'app/ios/EmbeddedNode/Resources/dsh-loader'
 DEFAULT_CORE_OUTPUT = DEFAULT_OUTPUT.with_name('dsh-core')
+DEFAULT_PERSISTENCE_OUTPUT = DEFAULT_OUTPUT.with_name('dsh-persistence')
+CHECKPOINT_PACKAGE = '@deepseek-ai/dsh-session-checkpoint-policy'
 ENTRY_PACKAGE = '@deepseek-ai/dsh-app-boot'
 CORE_ENTRY_PACKAGES = (
     '@deepseek-ai/dsh-session-projection', '@deepseek-ai/dsh-session',
@@ -124,16 +126,22 @@ def locked_package(seed: Path, lock: dict, parent: PurePosixPath | None, name: s
 
 
 def phase_entry_packages(phase: str) -> tuple[str, ...]:
-    if phase not in ('loader', 'core'):
-        raise ExportError('EXPORT_PHASE_INVALID')
-    return (ENTRY_PACKAGE, *CORE_ENTRY_PACKAGES) if phase == 'core' else (ENTRY_PACKAGE,)
+    if phase == 'loader':
+        return (ENTRY_PACKAGE,)
+    if phase == 'core':
+        return (ENTRY_PACKAGE, *CORE_ENTRY_PACKAGES)
+    if phase == 'persistence':
+        return (ENTRY_PACKAGE, *CORE_ENTRY_PACKAGES, CHECKPOINT_PACKAGE)
+    raise ExportError('EXPORT_PHASE_INVALID')
 
 
 def dependency_closure(seed: Path, lock: dict, phase: str = 'loader') -> tuple[dict, list]:
     selected = {}
     omitted = []
     queue = [(None, name) for name in phase_entry_packages(phase)]
-    reviewed = CORE_REVIEWED_PACKAGES if phase == 'core' else REVIEWED_PACKAGES
+    reviewed = REVIEWED_PACKAGES if phase == 'loader' else CORE_REVIEWED_PACKAGES
+    if phase == 'persistence':
+        reviewed = reviewed | {CHECKPOINT_PACKAGE}
     while queue:
         parent, name = queue.pop(0)
         if name in EXCLUDED:
@@ -271,7 +279,11 @@ def prepare(seed: Path, destination: Path, check: bool = False, phase: str = 'lo
     selected, omitted = dependency_closure(seed, lock, phase)
     omitted_exports = []
     files, omitted_files = collect_files(seed, selected, omitted_exports)
-    own_names = ('core-probe.mjs', 'core-fixture-model.mjs') if phase == 'core' else ('loader-probe.mjs', 'loader-fixture.mjs')
+    own_names = {
+        'loader': ('loader-probe.mjs', 'loader-fixture.mjs'),
+        'core': ('core-probe.mjs', 'core-fixture-model.mjs'),
+        'persistence': ('persistence-probe.mjs', 'sqlite-session-persistence.mjs', 'core-fixture-model.mjs'),
+    }[phase]
     own_files = [ROOT / 'runtime/ios' / name for name in own_names]
     for source in own_files:
         data = source.read_bytes()
@@ -289,10 +301,11 @@ def prepare(seed: Path, destination: Path, check: bool = False, phase: str = 'lo
         'sourceLockSHA256': sha256(lock_bytes),
         'integrityVerification': 'Seed must be created by npm ci --ignore-scripts; exporter verifies exact lock and package identities, then hashes output files',
         'entryPackage': ENTRY_PACKAGE, 'engineReady': False,
-        'excludedFeatures': (['PluginPackages', 'profile-runtime-resolution', 'HMR', 'web-profile',
-                              'model-provider-network', 'concrete-session-persistence', 'subprocesses']
-                             if phase == 'core' else
-                             ['PluginPackages', 'profile-runtime-resolution', 'HMR', 'agents', 'models', 'subprocesses']),
+        'excludedFeatures': ['PluginPackages', 'profile-runtime-resolution', 'HMR', 'subprocesses'] + {
+            'loader': ['agents', 'models'],
+            'core': ['web-profile', 'model-provider-network', 'concrete-session-persistence'],
+            'persistence': ['web-profile', 'model-provider-network', 'official-jsonl-storage', 'chat-transport'],
+        }[phase],
         'packages': [{'path': key, 'name': value[1]['name'], 'version': value[0]['version'],
                       'resolved': value[0]['resolved'], 'integrity': value[0]['integrity'],
                       'sourceManifestSHA256': sha256((seed / key / 'package.json').read_bytes()),
@@ -303,7 +316,7 @@ def prepare(seed: Path, destination: Path, check: bool = False, phase: str = 'lo
         'files': [{'path': relative, 'sha256': digest, 'bytes': size}
                   for _source, relative, digest, size in sorted(files, key=lambda item: item[1])],
     }
-    if phase == 'core':
+    if phase != 'loader':
         manifest['phase'] = phase
         manifest['entryPackages'] = list(entries)
         manifest['omittedExports'] = omitted_exports
@@ -331,11 +344,13 @@ def prepare(seed: Path, destination: Path, check: bool = False, phase: str = 'lo
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--seed', type=Path, required=True, help='Independent exact-lock npm ci seed')
-    parser.add_argument('--phase', choices=('loader', 'core'), default='loader')
-    parser.add_argument('--output', type=Path, help='Defaults to the phase-specific dsh-loader or dsh-core resources directory')
+    parser.add_argument('--phase', choices=('loader', 'core', 'persistence'), default='loader')
+    parser.add_argument('--output', type=Path, help='Defaults to the phase-specific dsh-* resources directory')
     parser.add_argument('--check', action='store_true', help='Inspect seed and hashes only; write nothing')
     args = parser.parse_args(argv)
-    output = args.output if args.output is not None else (DEFAULT_CORE_OUTPUT if args.phase == 'core' else DEFAULT_OUTPUT)
+    output = args.output if args.output is not None else {
+        'loader': DEFAULT_OUTPUT, 'core': DEFAULT_CORE_OUTPUT, 'persistence': DEFAULT_PERSISTENCE_OUTPUT,
+    }[args.phase]
     try:
         manifest = prepare(args.seed, output, args.check, args.phase)
         print(json.dumps({'distribution': manifest['distribution'], 'packageCount': len(manifest['packages']),

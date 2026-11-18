@@ -14,7 +14,8 @@
 - 启动后检测私有目录读写、ICU/Intl、内置模块加载、SQLite/FTS5、ESM 元信息；显示实际版本和结果。
 - 将官方锁中的 Loader 纯 JS 闭包与独立测试插件打包；验证真实服务激活、私有文件 challenge、dispose 和错误启动拦截，结果独立于 Node 能力记录。这个最小树没有挂载 Agent、模型或对话界面。
 - 独立内核树挂载官方 Session、投影、Prompt、Tools、LLM、Agent 与 AgentLoop；仅外部模型端点由明确标识的离线夹具替代。检查真实流式 delta、第二轮历史、取消、模型错误后的恢复、清理与缺失服务坏基线；不发真实模型请求，不挂载持久化，不作为用户聊天入口。
-- 界面分别展示 Node、Loader 与内核结果；没有报告、失败和通过各自显示，不根据 Node 兼容性掩盖内核失败。
+- 另一棵树挂载 App 自有、兼容官方 SessionPersistence 的 SQLite 后端及官方会话检查点策略，验证真实会话落盘、同一会话写入排他、独立读取、坏批原子拒绝、损坏日志拒绝，以及关闭后重建 DSH 并恢复历史。验证使用临时数据库和离线测试模型，不等于杀进程恢复已通过。
+- 界面分别展示 Node、Loader、内核与存储结果。没有报告、失败和通过各自显示；「此版本尚未提供正式聊天」是功能说明，不是启动错误。
 - `engineReady` 仍为 false；缺失框架、超时或错误返回明确失败状态，不伪造运行网址或登录令牌。
 - iOS 切后台后受系统挂起约束；目前不声明持续后台执行。
 
@@ -32,7 +33,7 @@
 
 1. 校验依赖锁与运行时哈希。
 2. 在 GitHub 上生成中英文文案，执行 Python/Node/Flutter 回归。
-3. Ubuntu 先执行官方 Loader、真实内存 AgentLoop 与各自错误基线，传递同一次运行的两个受审资源包给 Xcode；在 iOS Simulator App 进程内执行 Node、Loader 与 AgentLoop 的独立 XCTest 断言。
+3. Ubuntu 先执行官方 Loader、真实内存 AgentLoop、SQLite 持久化与各自错误基线，把同一次运行的三个受审资源包交给 Xcode；在 iOS Simulator App 进程内独立断言 Node、Loader、AgentLoop 与会话恢复。
 4. 构建未签名的 iPhone/iPad Release App；检查 Mach-O 平台、设备类型、框架和探针资源。
 5. 保存构建核验、XCTest 结果与未签名设备 App。
 

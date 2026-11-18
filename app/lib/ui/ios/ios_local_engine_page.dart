@@ -22,6 +22,7 @@ class IosLocalProbeStatus {
     this.capabilities = const {},
     this.loaderChecks,
     this.coreChecks,
+    this.persistenceChecks,
     this.appBackgrounded = false,
   });
 
@@ -54,6 +55,17 @@ class IosLocalProbeStatus {
     'disposeVerified',
     'badBaselineRejected',
     'ephemeral',
+  ];
+
+  static const persistenceCheckKeys = [
+    'storageBooted',
+    'writerExclusionVerified',
+    'readWhileOwnedVerified',
+    'atomicAppendVerified',
+    'flushVerified',
+    'coldResumeVerified',
+    'disposeVerified',
+    'badBaselineRejected',
   ];
 
   static Map<String, bool?>? _checks(Object? raw, List<String> keys, {bool requireEphemeral = false}) {
@@ -116,6 +128,7 @@ class IosLocalProbeStatus {
       },
       loaderChecks: _checks(report is Map ? report['loader'] : null, loaderCheckKeys),
       coreChecks: _checks(report is Map ? report['core'] : null, coreCheckKeys, requireEphemeral: true),
+      persistenceChecks: _checks(report is Map ? report['persistence'] : null, persistenceCheckKeys),
       appBackgrounded: raw['appBackgrounded'] as bool,
     );
   }
@@ -127,6 +140,7 @@ class IosLocalProbeStatus {
   final Map<String, bool> capabilities;
   final Map<String, bool?>? loaderChecks;
   final Map<String, bool?>? coreChecks;
+  final Map<String, bool?>? persistenceChecks;
   final bool appBackgrounded;
 }
 
@@ -248,6 +262,14 @@ class _IosLocalEnginePageState extends State<IosLocalEnginePage> {
     ('core', 'disposeVerified') => l10n.iosLocalCoreDispose,
     ('core', 'badBaselineRejected') => l10n.iosLocalCoreBadBaseline,
     ('core', 'ephemeral') => l10n.iosLocalCoreEphemeral,
+    ('persistence', 'storageBooted') => l10n.iosLocalStorageBooted,
+    ('persistence', 'writerExclusionVerified') => l10n.iosLocalStorageWriter,
+    ('persistence', 'readWhileOwnedVerified') => l10n.iosLocalStorageReader,
+    ('persistence', 'atomicAppendVerified') => l10n.iosLocalStorageAtomic,
+    ('persistence', 'flushVerified') => l10n.iosLocalStorageFlush,
+    ('persistence', 'coldResumeVerified') => l10n.iosLocalStorageResume,
+    ('persistence', 'disposeVerified') => l10n.iosLocalStorageDispose,
+    ('persistence', 'badBaselineRejected') => l10n.iosLocalStorageRejected,
     _ => throw ArgumentError.value(key),
   };
 
@@ -410,7 +432,7 @@ class _IosLocalEnginePageState extends State<IosLocalEnginePage> {
                         Text(
                           l10n.iosLocalDshNotStarted,
                           key: const ValueKey('ios-local-dsh-not-started'),
-                          style: theme.textTheme.titleSmall?.copyWith(color: colors.warning),
+                          style: theme.textTheme.titleSmall,
                         ),
                         const SizedBox(height: 6),
                         Text(l10n.iosLocalProbeOnly),
@@ -447,7 +469,15 @@ class _IosLocalEnginePageState extends State<IosLocalEnginePage> {
                              detail: l10n.iosLocalCoreDetail,
                              checks: status!.coreChecks!,
                            ),
-                         if (status?.appBackgrounded == true) ...[
+                         if (status?.persistenceChecks case final checks?)
+                            _validationSection(
+                              l10n,
+                              group: 'persistence',
+                              title: l10n.iosLocalStorageTitle,
+                              detail: l10n.iosLocalStorageDetail,
+                              checks: checks,
+                            ),
+                          if (status?.appBackgrounded == true) ...[
                           const SizedBox(height: 12),
                           Text(l10n.iosLocalBackgroundObservation),
                         ],

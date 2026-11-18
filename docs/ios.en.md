@@ -14,7 +14,8 @@ The current stage adds the iOS project, an embedded Node framework, a real JavaS
 - The probe checks private-directory read/write, ICU/Intl, builtin module loading, SQLite/FTS5 and ESM metadata, reporting actual versions and results.
 - A reviewed pure-JS Loader closure from the official lock plus an App-owned test plugin verifies actual service activation, a private-file challenge, disposal and rejected startup. These checks are separate from Node capabilities. This minimal tree does not mount an Agent, model or conversation UI.
 - A separate core tree mounts the actual Session, projections, Prompt, Tools, LLM, Agent and AgentLoop. Only the external model endpoint is replaced with an explicitly labeled offline fixture. Checks cover streamed deltas, second-turn history, cancellation, recovery after a model error, disposal, and missing-service rejection. It makes no live model requests, mounts no persistence, and is not a user chat entry point.
-- The interface separates Node, Loader and core observations. Missing, failed and passing results remain distinct; Node compatibility does not hide core failure.
+- Another tree mounts an App-owned SQLite backend through the official SessionPersistence contract and the official checkpoint policy. It verifies durable writes, same-session writer exclusion, independent reads, atomic rejection of invalid batches, rejection of damaged logs, and recovery of conversation history after closing and recreating DSH. This uses temporary files and an offline test model, not an app-kill recovery test.
+- The interface separates Node, Loader, core and storage observations. Missing, failed and passing results remain distinct. “Chat is not available in this build” describes feature scope, not a startup error.
 - `engineReady` remains false. Missing resources, timeouts and invalid responses are explicit failures, not fabricated URLs or login tokens.
 - iOS may suspend background applications. Continuous background execution is not claimed.
 
@@ -32,7 +33,7 @@ The [iOS workflow](../.github/workflows/ios.yml) runs on branch pushes and manua
 
 1. Verify dependency requirements and runtime integrity.
 2. Generate bilingual localization and run Python, Node and Flutter regressions on GitHub.
-3. Exercise the official Loader, actual in-memory AgentLoop and their rejected baselines on Ubuntu. Pass that same run's two reviewed bundles to Xcode, then assert Node, Loader and AgentLoop independently inside the iOS Simulator application process.
+3. Exercise the official Loader, actual in-memory AgentLoop, SQLite persistence and their rejected baselines on Ubuntu. Pass the same run's three reviewed bundles to Xcode, then assert Node, Loader, AgentLoop and session recovery independently inside the iOS Simulator application process.
 4. Build an unsigned iPhone/iPad Release application and verify its platform, device families, framework and probe resources.
 5. Preserve build verification, XCTest results and the unsigned device application.
 

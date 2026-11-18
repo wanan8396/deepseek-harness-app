@@ -35,16 +35,22 @@ jobs:
         run: |
           python3 tooling/prepare_ios_loader.py --seed "$RUNNER_TEMP/dsh-ios-seed" --phase core --output "$RUNNER_TEMP/dsh-ios-core"
           node runtime/ios/test-core.mjs "$RUNNER_TEMP/dsh-ios-core"
+      - name: Verify real SQLite persistence and cold AgentLoop resume
+        run: |
+          python3 tooling/prepare_ios_loader.py --seed "$RUNNER_TEMP/dsh-ios-seed" --phase persistence --output "$RUNNER_TEMP/dsh-ios-persistence"
+          node runtime/ios/test-persistence.mjs "$RUNNER_TEMP/dsh-ios-persistence"
       - name: Export exact tested runtime bundles for the iOS job
         run: |
-          tar -czf "$RUNNER_TEMP/dsh-ios-loader.tar.gz" -C "$RUNNER_TEMP/dsh-ios-loader" .
-          tar -czf "$RUNNER_TEMP/dsh-ios-core.tar.gz" -C "$RUNNER_TEMP/dsh-ios-core" .
+          for phase in loader core persistence; do
+            tar -czf "$RUNNER_TEMP/dsh-ios-$phase.tar.gz" -C "$RUNNER_TEMP/dsh-ios-$phase" .
+          done
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: ios-dsh-loader-input
           path: |
             ${{ runner.temp }}/dsh-ios-loader.tar.gz
             ${{ runner.temp }}/dsh-ios-core.tar.gz
+            ${{ runner.temp }}/dsh-ios-persistence.tar.gz
           retention-days: 7
   ios:
     needs: loader
@@ -88,12 +94,13 @@ jobs:
         with:
           name: ios-dsh-loader-input
           path: ${{ runner.temp }}/ios-loader-input
-      - name: Stage the exact tested Loader bundle in native resources
+      - name: Stage the exact tested DSH bundles in native resources
         run: |
-          mkdir -p app/ios/EmbeddedNode/Resources/dsh-loader
-          tar -xzf "$RUNNER_TEMP/ios-loader-input/dsh-ios-loader.tar.gz" -C app/ios/EmbeddedNode/Resources/dsh-loader
-          mkdir -p app/ios/EmbeddedNode/Resources/dsh-core
-          tar -xzf "$RUNNER_TEMP/ios-loader-input/dsh-ios-core.tar.gz" -C app/ios/EmbeddedNode/Resources/dsh-core
+          for phase in loader core persistence; do
+            destination="app/ios/EmbeddedNode/Resources/dsh-$phase"
+            mkdir -p "$destination"
+            tar -xzf "$RUNNER_TEMP/ios-loader-input/dsh-ios-$phase.tar.gz" -C "$destination"
+          done
       - name: Analyze application
         working-directory: app
         run: flutter analyze --no-pub

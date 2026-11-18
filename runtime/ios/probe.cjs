@@ -128,6 +128,19 @@ async function main(reportPath) {
           stage: 'import', errorCode: 'IOS_DSH_CORE_PROBE_FAILED' };
       }
     }
+    const persistenceRoot = path.join(__dirname, 'dsh-persistence');
+    if (fs.existsSync(persistenceRoot)) {
+      try {
+        const { runPersistenceProbe } = await import(pathToFileURL(path.join(persistenceRoot, 'persistence-probe.mjs')).href);
+        report.persistence = await runPersistenceProbe(path.dirname(reportPath), persistenceRoot);
+      } catch {
+        report.persistence = { storageBooted: false, writerExclusionVerified: false,
+          readWhileOwnedVerified: false, atomicAppendVerified: false, flushVerified: false,
+          coldResumeVerified: false, disposeVerified: false, badBaselineRejected: false,
+          modelKind: 'offline-fixture', persistentStore: true, engineReady: false,
+          stage: 'import', errorCode: 'IOS_DSH_PERSISTENCE_PROBE_FAILED' };
+      }
+    }
     atomicReport(reportPath, report);
   } catch {
     // Machine-only message: never serialize error messages, paths, tokens or argv.

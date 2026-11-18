@@ -71,6 +71,7 @@ class PrepareIOSLoaderTests(unittest.TestCase):
         for arguments, phase, output in (
                 ([], 'loader', exporter.DEFAULT_OUTPUT),
                 (['--phase', 'core'], 'core', exporter.DEFAULT_CORE_OUTPUT),
+                (['--phase', 'persistence'], 'persistence', exporter.DEFAULT_PERSISTENCE_OUTPUT),
                 (['--phase', 'core', '--output', 'custom-core'], 'core', Path('custom-core'))):
             with self.subTest(phase=phase, output=output):
                 manifest = {'distribution': f'ios-adapted-{phase}-probe', 'packages': [],
@@ -310,6 +311,37 @@ class PrepareIOSLoaderTests(unittest.TestCase):
                 exported = (output / entry['path']).read_bytes()
                 self.assertEqual(exporter.sha256(exported), entry['sha256'])
                 self.assertEqual(len(exported), entry['bytes'])
+
+    def test_persistence_export_adds_checkpoint_and_only_its_owned_files(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            seed = directory / 'seed'
+            seed.mkdir()
+            lock = {'packages': {}}
+            add_core_seed(seed, lock)
+            checkpoint = '@deepseek-ai/dsh-session-checkpoint-policy'
+            add_package(seed, lock, checkpoint, peer_dependencies={'@deepseek-ai/dsh-session-persistence': '*'},
+                        version='0.2.2-rc.3')
+            lock_path = seed / 'package-lock.json'
+            lock_path.write_text(json.dumps(lock))
+            resources = directory / 'runtime/ios'
+            resources.mkdir(parents=True)
+            owned_files = {'persistence-probe.mjs', 'sqlite-session-persistence.mjs', 'core-fixture-model.mjs'}
+            for name in owned_files | {'core-probe.mjs', 'test-persistence.mjs'}:
+                (resources / name).write_text('export {};\n')
+            output = directory / 'dsh-persistence'
+            with patch.object(exporter, 'LOCK', lock_path), patch.object(exporter, 'ROOT', directory):
+                manifest = exporter.prepare(seed, output, phase='persistence')
+            self.assertEqual(manifest['distribution'], 'ios-adapted-persistence-probe')
+            self.assertFalse(manifest['engineReady'])
+            self.assertEqual(manifest['phase'], 'persistence')
+            self.assertIn(checkpoint, manifest['entryPackages'])
+            core, _ = exporter.dependency_closure(seed, lock, phase='core')
+            self.assertEqual({entry['path'] for entry in manifest['packages']} - set(core),
+                             {f'node_modules/{checkpoint}'})
+            self.assertEqual({entry['path'] for entry in manifest['files']
+                              if not entry['path'].startswith('node_modules/')}, owned_files)
+            self.assertFalse((output / 'test-persistence.mjs').exists())
 
     def test_core_phase_keeps_loader_allowlist_and_native_rejection_closed(self):
         with tempfile.TemporaryDirectory() as temporary:

@@ -53,6 +53,16 @@ final class RunnerTests: XCTestCase {
     XCTAssertEqual(core["ephemeral"] as? Bool, true)
     XCTAssertEqual(core["engineReady"] as? Bool, false)
     XCTAssertEqual(core["stage"] as? String, "complete")
+    let persistence = try XCTUnwrap(value["persistence"] as? [String: Any])
+    for key in ["storageBooted", "writerExclusionVerified", "readWhileOwnedVerified", "atomicAppendVerified",
+                "flushVerified", "coldResumeVerified", "disposeVerified", "badBaselineRejected"] {
+      XCTAssertEqual(persistence[key] as? Bool, true,
+        "DSH persistence gate failed: \(key), stage=\(persistence["stage"] ?? "unknown")")
+    }
+    XCTAssertEqual(persistence["engineReady"] as? Bool, false)
+    XCTAssertEqual(persistence["modelKind"] as? String, "offline-fixture")
+    XCTAssertEqual(persistence["persistentStore"] as? Bool, true)
+    XCTAssertEqual(persistence["stage"] as? String, "complete")
     // A second call must not initialize another V8 runtime in this process.
     XCTAssertFalse(DshEmbeddedNode.startProbe(atPath: script, reportPath: output.path) { _ in })
   }

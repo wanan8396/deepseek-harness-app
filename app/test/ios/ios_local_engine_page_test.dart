@@ -127,6 +127,26 @@ void main() {
     final status = IosLocalProbeStatus.fromMap(_status());
     expect(status.loaderChecks, isNull);
     expect(status.coreChecks, isNull);
+    expect(status.persistenceChecks, isNull);
+  });
+
+  test('persistence observations never imply chat readiness', () {
+    final status = IosLocalProbeStatus.fromMap(_status(report: {
+      'persistence': {
+        'engineReady': false,
+        'storageBooted': true,
+        'coldResumeVerified': false,
+        'path': '/private/storage-fixture',
+      },
+    }));
+    expect(status.persistenceChecks?.keys, IosLocalProbeStatus.persistenceCheckKeys);
+    expect(status.persistenceChecks?['storageBooted'], isTrue);
+    expect(status.persistenceChecks?['coldResumeVerified'], isFalse);
+    expect(status.persistenceChecks?['flushVerified'], isNull);
+    expect(status.persistenceChecks?.containsKey('path'), isFalse);
+    expect(() => IosLocalProbeStatus.fromMap(_status(report: {
+      'persistence': {'engineReady': true, 'storageBooted': true},
+    })), throwsFormatException);
   });
 
   test('validation parser keeps only fixed checks and preserves three states', () {
@@ -261,8 +281,8 @@ void main() {
     ));
     await _mount(tester);
     expect(find.text('内嵌 Node.js 探针已完成'), findsOneWidget);
-    expect(find.textContaining('DSH 本机引擎未启动'), findsOneWidget);
-    expect(find.textContaining('DSH 引擎适配仍在验证'), findsOneWidget);
+    expect(find.textContaining('此版本尚未提供正式聊天'), findsOneWidget);
+    expect(find.textContaining('下方分别显示 DSH 的各项验证结果'), findsOneWidget);
     expect(find.textContaining('Node.js：24.22.1'), findsOneWidget);
     expect(find.textContaining('版本未满足'), findsNothing);
     expect(find.textContaining('private-token'), findsNothing);
@@ -394,7 +414,7 @@ void main() {
     expect(find.text('核心错误启动基线已拦截'), findsOneWidget);
     expect(tester.widget<Text>(find.byKey(const ValueKey('ios-local-core-badBaselineRejected'))).data, '未通过');
     expect(tester.widget<Text>(find.byKey(const ValueKey('ios-local-loader-badBaselineRejected'))).data, '通过');
-    expect(find.text('DSH 本机引擎未启动'), findsOneWidget);
+    expect(find.text('此版本尚未提供正式聊天'), findsOneWidget);
     expect(find.byKey(const ValueKey('ios-local-engine-page')), findsOneWidget);
     expect(find.byType(TextField), findsNothing);
     expect(tester.widget<FilledButton>(find.byKey(_start)).onPressed, isNull);
@@ -414,7 +434,7 @@ void main() {
     await _mount(tester);
     expect(find.byKey(const ValueKey('ios-local-engine-page')), findsOneWidget);
     expect(find.byKey(const ValueKey('local-web-startup-cover')), findsOneWidget);
-    expect(find.text('DSH 本机引擎未启动'), findsOneWidget);
+    expect(find.text('此版本尚未提供正式聊天'), findsOneWidget);
     expect(find.textContaining('仅使用内存存储和固定离线测试模型'), findsOneWidget);
     expect(find.textContaining('仍不代表完整本机引擎已就绪或可正式聊天'), findsOneWidget);
     expect(tester.widget<Text>(find.byKey(const ValueKey('ios-local-core-ephemeral'))).data, '通过');
@@ -566,7 +586,7 @@ void main() {
     AppLocale.use(AppLocale.en);
     await _mount(tester);
     expect(find.text('Run local probe'), findsOneWidget);
-    expect(find.text('On-device DSH engine has not started'), findsOneWidget);
+    expect(find.text('Chat is not available in this build'), findsOneWidget);
     expect(find.textContaining('remote engine'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
@@ -597,7 +617,7 @@ void main() {
     expect(tester.widget<Text>(find.byKey(const ValueKey('ios-local-core-firstTurnStreamed'))).data, 'Not checked');
     expect(find.textContaining('not a real model provider'), findsOneWidget);
     expect(find.textContaining('No model API calls are made'), findsOneWidget);
-    expect(find.text('On-device DSH engine has not started'), findsOneWidget);
+    expect(find.text('Chat is not available in this build'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.ensureVisible(find.byKey(_refresh));
     expect(tester.widget<OutlinedButton>(find.byKey(_refresh)).onPressed, isNotNull);
