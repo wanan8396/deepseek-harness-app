@@ -1,6 +1,20 @@
 import DshEmbeddedNode
 import Flutter
+import WebKit
 import XCTest
+
+private final class WebAssetNavigation: NSObject, WKNavigationDelegate {
+  let loaded: XCTestExpectation
+  var error: Error?
+  init(_ loaded: XCTestExpectation) { self.loaded = loaded }
+  func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { loaded.fulfill() }
+  func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+    self.error = error; loaded.fulfill()
+  }
+  func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+    self.error = error; loaded.fulfill()
+  }
+}
 
 final class RunnerTests: XCTestCase {
   // This runs node_start inside the actual iOS Simulator application process.
@@ -116,6 +130,35 @@ final class RunnerTests: XCTestCase {
     evidence.name = "embedded-ios-chat-verification.json"
     evidence.lifetime = .keepAlways
     add(evidence)
+  }
+
+  @MainActor
+  func testOfficialFrontendAssetsLoadWithoutTCP() async throws {
+    let assets = IosOfficialWebAssets()
+    let config = WKWebViewConfiguration()
+    config.websiteDataStore = .nonPersistent()
+    config.setURLSchemeHandler(assets, forURLScheme: IosOfficialWebAssets.scheme)
+    let web = WKWebView(frame: CGRect(x: 0, y: 0, width: 390, height: 844), configuration: config)
+    let navigation = WebAssetNavigation(expectation(description: "Stock DSH frontend loads from App URL"))
+    web.navigationDelegate = navigation
+    web.load(URLRequest(url: IosOfficialWebAssets.startURL))
+    await fulfillment(of: [navigation.loaded], timeout: 15)
+    XCTAssertNil(navigation.error)
+    XCTAssertEqual(web.url, IosOfficialWebAssets.startURL)
+    XCTAssertTrue(assets.servedPaths.contains("index.html"))
+    XCTAssertTrue(assets.servedPaths.contains { $0.hasPrefix("assets/index-") && $0.hasSuffix(".js") })
+    XCTAssertTrue(assets.servedPaths.contains { $0.hasPrefix("assets/index-") && $0.hasSuffix(".css") })
+    let boot = try await web.evaluateJavaScript("document.querySelector('#root')?.textContent ?? ''") as? String
+    XCTAssertTrue(boot?.contains("window.__ModuleLoader__ bootstrap facade is missing") == true,
+      "Stock entry must execute; this gate deliberately supplies no module loader or fake backend")
+    let report = try JSONSerialization.data(withJSONObject: [
+      "officialAssetsServed": true, "stockEntryExecuted": true, "usesLocalTCP": false,
+      "officialUIReady": false, "missingCapability": "client-module-bootstrap-and-engine-transport",
+    ])
+    let attachment = XCTAttachment(data: report, uniformTypeIdentifier: "public.json")
+    attachment.name = "official-web-assets-only.json"
+    attachment.lifetime = .keepAlways
+    add(attachment)
   }
 
   private func request(_ mailbox: IosChatMailbox, _ method: IosChatMailbox.Method,

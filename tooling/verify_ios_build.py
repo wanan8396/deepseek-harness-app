@@ -46,6 +46,21 @@ def main():
             relative = Path(entry['path'])
             assert not relative.is_absolute() and '..' not in relative.parts
             assert hashlib.sha256((bundle / relative).read_bytes()).hexdigest() == entry['sha256']
+    frontend = framework / 'dsh-web-frontend'
+    web = json.loads((frontend / 'distribution-manifest.json').read_bytes())
+    assert web['package'] == '@deepseek-ai/dsh-web-frontend' and web['version'] == '0.2.2-rc.3'
+    lock_bytes = (root / 'runtime/locks/dsh-0.2.2-rc.3/package-lock.json').read_bytes()
+    assert web['sourceLockSHA256'] == hashlib.sha256(lock_bytes).hexdigest()
+    assert web['integrity'] == json.loads(lock_bytes)['packages']['node_modules/@deepseek-ai/dsh-web-frontend']['integrity']
+    expected = {'distribution-manifest.json'}
+    for entry in web['files']:
+        relative = Path(entry['path'])
+        assert not relative.is_absolute() and '..' not in relative.parts and entry['path'] not in expected
+        item = frontend / relative
+        assert item.is_file() and not item.is_symlink() and item.stat().st_size == entry['bytes']
+        assert hashlib.sha256(item.read_bytes()).hexdigest() == entry['sha256']
+        expected.add(entry['path'])
+    assert {file.relative_to(frontend).as_posix() for file in frontend.rglob('*') if file.is_file()} == expected
     bridge = app / 'Frameworks/DshEmbeddedNode.framework/DshEmbeddedNode'
     assert bridge.is_file(), 'Embedded runtime bridge framework missing'
     deps = subprocess.check_output(['otool', '-L', str(bridge)], text=True)
