@@ -12,6 +12,7 @@ const ROWS = [
   ['storageDomain', '@deepseek-ai/dsh-storage-domain'],
   ['commands', '@deepseek-ai/dsh-commands'],
   ['sessionProjections', '@deepseek-ai/dsh-session-projection'],
+  ['sessionTitle', '@deepseek-ai/dsh-session-title', { fallbackMaxWords: 5, fallbackMaxBytes: 40, maxTitleBytes: 80 }],
   ['sessionQuery', '@deepseek-ai/dsh-session-query-sqlite', { path: ':memory:', openAt: 'never' }],
   ['systemPrompt', '@deepseek-ai/dsh-system-prompt'],
   ['tools', '@deepseek-ai/dsh-tools'],

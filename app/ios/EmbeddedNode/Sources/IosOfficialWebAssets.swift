@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import WebKit
 
@@ -29,18 +30,47 @@ public final class IosOfficialWebAssets: NSObject, WKURLSchemeHandler {
     let resources: [Resource]
     let cspScriptHashes: [String]
   }
+  private struct Preview: Decodable {
+    struct File: Decodable {
+      let path: String
+      let bytes: Int
+      let sha256: String
+    }
+    struct Resource: Decodable {
+      let url: String
+      let contentType: String
+      let path: String
+      let bytes: Int
+      let sha256: String
+    }
+    struct Graph: Decodable {
+      struct Release: Decodable { let version: String }
+      struct Entry: Decodable { let id: String; let rev: String; let url: String }
+      struct Batch: Decodable { let phase: String; let entries: [String]; let rev: String; let url: String }
+      let release: Release
+      let entries: [Entry]
+      let batches: [Batch]
+    }
+    let schemaVersion: Int
+    let stage: String
+    let officialUIReady: Bool
+    let graph: Graph
+    let index: File
+    let resources: [Resource]
+    let cspScriptHashes: [String]
+  }
   private struct Asset {
     let url: URL
     let bytes: Int
     let contentType: String
     var scriptHashes: [String] = []
+    var previewData: Data? = nil
   }
   private let assets: [String: Asset]
   private let lock = NSLock()
   private var served: Set<String> = []
 
-  public override init() {
-    let bundle = Bundle(for: IosOfficialWebAssets.self).bundleURL
+  private static func stockAssets(in bundle: URL) -> [String: Asset] {
     let root = bundle.appendingPathComponent("dsh-web-frontend", isDirectory: true)
     let manifest = try? JSONDecoder().decode(Manifest.self,
       from: Data(contentsOf: root.appendingPathComponent("distribution-manifest.json")))
@@ -52,6 +82,12 @@ public final class IosOfficialWebAssets: NSObject, WKURLSchemeHandler {
         assets["/" + entry.path] = Asset(url: root.appendingPathComponent(entry.path), bytes: entry.bytes, contentType: type)
       }
     }
+    return assets
+  }
+
+  public override init() {
+    let bundle = Bundle(for: IosOfficialWebAssets.self).bundleURL
+    var assets = Self.stockAssets(in: bundle)
     let bootstrap = bundle.appendingPathComponent("dsh-web-bootstrap", isDirectory: true)
     if let data = try? Data(contentsOf: bootstrap.appendingPathComponent("distribution-manifest.json")),
        let manifest = try? JSONDecoder().decode(Bootstrap.self, from: data),
@@ -75,6 +111,117 @@ public final class IosOfficialWebAssets: NSObject, WKURLSchemeHandler {
     }
     self.assets = assets
     super.init()
+  }
+
+  /// XCTest-only fixture; the default initializer never looks for a preview.
+  /// An invalid fixture fails as a unit, without falling back to the singleton.
+  public init(previewDirectory: URL) throws {
+    let bundle = Bundle(for: IosOfficialWebAssets.self).bundleURL
+    var assets = Self.stockAssets(in: bundle)
+    let preview = try Self.previewAssets(in: previewDirectory)
+    guard assets["/index.html"] != nil, assets.keys.allSatisfy({ preview[$0] == nil }) else {
+      throw URLError(.cannotDecodeContentData)
+    }
+    assets.merge(preview) { current, _ in current }
+    self.assets = assets
+    super.init()
+  }
+
+  private static func previewAssets(in root: URL) throws -> [String: Asset] {
+    let invalid = URLError(.cannotDecodeContentData)
+    guard root.isFileURL else { throw invalid }
+    let bundles = root.appendingPathComponent("bundles", isDirectory: true)
+    for directory in [root, bundles] {
+      let values = try directory.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+      guard values.isDirectory == true, values.isSymbolicLink == false else { throw invalid }
+    }
+    let manifestURL = root.appendingPathComponent("distribution-manifest.json")
+    let manifest = try JSONDecoder().decode(Preview.self, from: previewFile(manifestURL, limit: 1024 * 1024))
+    guard manifest.schemaVersion == 1, manifest.stage == "official-shell-preview", !manifest.officialUIReady,
+          manifest.graph.release.version == "0.2.2-rc.3", manifest.graph.entries.count >= 20,
+          manifest.index.path == "index.html", (20...128).contains(manifest.resources.count) else { throw invalid }
+
+    var ids: Set<String> = []
+    var routes: Set<String> = []
+    for row in manifest.graph.entries {
+      guard matches(row.id, #"\A@deepseek-ai/dsh-[a-z0-9-]+\z"#), ids.insert(row.id).inserted,
+            let route = previewRoute(row.url, ids: [row.id], rev: row.rev), routes.insert(route).inserted else {
+        throw invalid
+      }
+    }
+    var batched: Set<String> = []
+    var batchRoutes: Set<String> = []
+    var bootstrapCount = 0
+    for batch in manifest.graph.batches {
+      if batch.phase == "bootstrap" {
+        guard batch.entries == ["@deepseek-ai/dsh-client-modules"] else { throw invalid }
+        bootstrapCount += 1
+      } else if batch.phase != "application" {
+        throw invalid
+      }
+      for id in batch.entries {
+        guard ids.contains(id), batched.insert(id).inserted else { throw invalid }
+      }
+      guard let route = previewRoute(batch.url, ids: batch.entries, rev: batch.rev),
+            batchRoutes.insert(route).inserted else { throw invalid }
+    }
+    routes.formUnion(batchRoutes)
+    guard bootstrapCount == 1, batchRoutes.count >= 2, batched == ids,
+          routes.count == manifest.resources.count else { throw invalid }
+
+    let indexURL = root.appendingPathComponent(manifest.index.path)
+    let index = try checkedPreviewFile(indexURL, bytes: manifest.index.bytes, sha256: manifest.index.sha256)
+    guard let html = String(data: index, encoding: .utf8) else { throw invalid }
+    // Match the exporter's literal <script> tags, then hash the exact UTF-8 bodies.
+    let text = html as NSString
+    let inlineScripts = try NSRegularExpression(pattern: #"<script>([\s\S]*?)</script>"#)
+    let hashes = inlineScripts.matches(in: html, range: NSRange(location: 0, length: text.length)).map {
+      "sha256-" + Data(SHA256.hash(data: Data(text.substring(with: $0.range(at: 1)).utf8))).base64EncodedString()
+    }
+    guard hashes.count >= 3, hashes == manifest.cspScriptHashes else { throw invalid }
+
+    let javascript = "text/javascript; charset=utf-8"
+    var assets = ["/": Asset(url: indexURL, bytes: index.count, contentType: "text/html; charset=utf-8",
+                             scriptHashes: hashes, previewData: index)]
+    for (offset, resource) in manifest.resources.enumerated() {
+      let filename = "\(offset)-\(resource.sha256.prefix(12)).js"
+      guard routes.remove(resource.url) != nil, resource.contentType == javascript,
+            matches(resource.sha256, #"\A[0-9a-f]{64}\z"#), resource.path == "bundles/" + filename else { throw invalid }
+      let url = bundles.appendingPathComponent(filename)
+      let data = try checkedPreviewFile(url, bytes: resource.bytes, sha256: resource.sha256)
+      assets[resource.url] = Asset(url: url, bytes: data.count, contentType: javascript, previewData: data)
+    }
+    return assets
+  }
+
+  private static func matches(_ value: String, _ pattern: String) -> Bool {
+    value.range(of: pattern, options: .regularExpression) != nil
+  }
+
+  private static func previewRoute(_ reference: String, ids: [String], rev: String) -> String? {
+    guard !ids.isEmpty, matches(rev, #"\A[0-9a-f]{12}\z"#), reference.utf8.count < 3072,
+          reference == "plugins/??" + ids.map({ $0 + "/client.js" }).joined(separator: ",") + "&rev=" + rev else {
+      return nil
+    }
+    return "/" + reference
+  }
+
+  private static func previewFile(_ url: URL, limit: Int) throws -> Data {
+    let values = try url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey])
+    guard values.isRegularFile == true, values.isSymbolicLink == false,
+          let size = values.fileSize, size > 0, size <= limit else { throw URLError(.cannotDecodeContentData) }
+    let data = try Data(contentsOf: url)
+    guard data.count == size else { throw URLError(.cannotDecodeContentData) }
+    return data
+  }
+
+  private static func checkedPreviewFile(_ url: URL, bytes: Int, sha256: String) throws -> Data {
+    guard bytes > 0, bounded(url.lastPathComponent, bytes) else { throw URLError(.cannotDecodeContentData) }
+    // Keep the verified bytes so a later replacement of the fixture cannot alter the response.
+    let data = try previewFile(url, limit: bytes)
+    let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    guard data.count == bytes, digest == sha256 else { throw URLError(.cannotDecodeContentData) }
+    return data
   }
 
   private static func bounded(_ path: String, _ bytes: Int) -> Bool {
@@ -102,7 +249,7 @@ public final class IosOfficialWebAssets: NSObject, WKURLSchemeHandler {
     }
     let path = parts.percentEncodedPath + (parts.percentEncodedQuery.map { "?" + $0 } ?? "")
     guard let asset = assets[path],
-          let data = try? Data(contentsOf: asset.url, options: [.mappedIfSafe]),
+          let data = asset.previewData ?? (try? Data(contentsOf: asset.url, options: [.mappedIfSafe])),
           asset.bytes == data.count else {
       urlSchemeTask.didFailWithError(URLError(.fileDoesNotExist))
       return

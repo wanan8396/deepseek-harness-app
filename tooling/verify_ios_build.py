@@ -30,7 +30,7 @@ def main():
     for name in ['probe.cjs', 'meta-probe.mjs', 'requirements.json', 'NodeMobile-LICENSE.txt']:
         assert (app / 'Frameworks/DshEmbeddedNode.framework' / name).read_bytes() == (root / 'runtime/ios' / name).read_bytes(), name
     framework = app / 'Frameworks/DshEmbeddedNode.framework'
-    for test_only in ('chat-ci-entry.cjs', 'dsh-official-host-ci', 'official-host-ci-mailbox.mjs'):
+    for test_only in ('chat-ci-entry.cjs', 'dsh-official-host-ci', 'official-host-ci-mailbox.mjs', 'dsh-web-shell-preview'):
         assert not any(app.rglob(test_only)), f'CI fixture entered shipped resources: {test_only}'
     assert not any(app.rglob('test-chat.mjs')), 'CI runner entered shipped resources'
     for directory, distribution in [('dsh-loader', 'ios-adapted-loader-probe'),

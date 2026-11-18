@@ -5,7 +5,9 @@
   const name = 'IOS_WEB_TRANSPORT_UNAVAILABLE';
   const blocked = () => Promise.reject(new TypeError(name));
   if (!handler || typeof handler.postMessage !== 'function') {
-    window.__DSH_TRANSPORT__ = Object.freeze({ ownsHost: true, fetch: blocked, openStream: blocked });
+    window.__DSH_TRANSPORT__ = Object.freeze({ ownsHost: true, fetch: blocked,
+      openStream: async function* () { throw new TypeError(name); },
+    });
     return;
   }
   const send = (frame) => handler.postMessage(frame);
@@ -38,9 +40,34 @@
     for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
     return new Response(bytes.byteLength ? bytes : null, { status: reply.status, headers: reply.headers ?? {} });
   };
-  window.__DSH_TRANSPORT__ = Object.freeze({
-    ownsHost: true,
-    fetch: fetchImpl,
-    openStream: () => blocked(),
-  });
+  let nextStreamId = 0;
+  // The first simulator carrier exercises read-only session streams. Its
+  // command route exists only in RunnerTests, not in the packaged App.
+  async function* openStream(endpoint, payload, signal, uplink) {
+    if (endpoint !== 'session/follow' || uplink !== undefined) throw new TypeError(name);
+    signal?.throwIfAborted();
+    const id = `s${++nextStreamId}`;
+    const command = async (type, extra = {}) => {
+      const response = await fetchImpl('api/ios-ci/stream', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id, type, ...extra }),
+      });
+      if (!response.ok) throw new Error(`IOS_WEB_STREAM_${type.toUpperCase()}_FAILED: ${response.status}`);
+      return response.json();
+    };
+    if ((await command('open', { endpoint, payload })).opened !== true) throw new TypeError(name);
+    try {
+      for (;;) {
+        signal?.throwIfAborted();
+        const item = await command('next');
+        signal?.throwIfAborted();
+        if (item.done === true) return;
+        if (item.done !== false || !Object.hasOwn(item, 'value')) throw new TypeError(name);
+        yield item.value;
+      }
+    } finally {
+      if ((await command('close')).closed !== true) throw new TypeError(name);
+    }
+  }
+  window.__DSH_TRANSPORT__ = Object.freeze({ ownsHost: true, fetch: fetchImpl, openStream });
 })();

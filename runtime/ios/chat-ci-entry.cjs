@@ -213,7 +213,8 @@ if (require.main === module) {
     await serveOfficialHostCi(hostPath, report);
   }).catch(error => {
     console.error('IOS_OFFICIAL_HOST_CI_ERROR', error);
-    fs.writeFileSync(path.join(__dirname, 'official-host-ci-error'), String(error), { mode: 0o600 });
+    try { fs.writeFileSync(path.join(__dirname, 'official-host-ci-error'), String(error), { mode: 0o600 }); }
+    catch (writeError) { console.error('IOS_OFFICIAL_HOST_CI_ERROR_REPORT_FAILED', writeError.code); }
   });
 }
 module.exports = { installFetchFixture, key, first, second, cancelled, invalid, output, reasoning, signature, custom, workspace,

@@ -170,7 +170,7 @@ final class RunnerTests: XCTestCase {
       do { try await verifyOfficialWebSessionRPC(directory) }
       catch { XCTFail("Official WebKit session RPC: \(error)") }
     }
-    wait(for: [webFinished], timeout: 45)
+    wait(for: [webFinished], timeout: 55)
   }
 
   @MainActor
@@ -204,10 +204,7 @@ final class RunnerTests: XCTestCase {
         throw URLError(.timedOut)
       }
     }
-    defer {
-      bridge.invalidate()
-      try? Data(#"{"stop":true}"#.utf8).write(to: requestURL, options: .atomic)
-    }
+    defer { bridge.invalidate() }
     bridge.load()
     let deadline = ProcessInfo.processInfo.systemUptime + 10
     while !bridge.isReady && ProcessInfo.processInfo.systemUptime < deadline {
@@ -232,7 +229,20 @@ final class RunnerTests: XCTestCase {
       const first = await rpc('session/create', {request: {}});
       const second = await rpc('session/create', {request: {}});
       const list = await rpc('session/list', {_request: {}});
-      return { ids: [first.sessionId, second.sessionId], listed: list.items.map(x => x.sessionId) };
+      const controller = new AbortController();
+      const iterator = window.__DSH_TRANSPORT__.openStream('session/follow', {
+        args: {request: {address: {kind: 'session', sessionId: first.sessionId}, maxMessages: 10}},
+      }, controller.signal)[Symbol.asyncIterator]();
+      const initial = (await iterator.next()).value;
+      const title = 'WebKit stream fixture';
+      await rpc('session/rename', {request: {sessionId: first.sessionId, title}});
+      const update = (await iterator.next()).value;
+      controller.abort();
+      const closed = await iterator.return();
+      return { ids: [first.sessionId, second.sessionId], listed: list.items.map(x => x.sessionId),
+        openingMatches: initial.type === 'snapshot' && initial.header.id === first.sessionId,
+        updateMatches: update.type === 'event' && update.event.type === 'session/title' && update.event.data.title === title,
+        closed: closed.done === true };
       """)
     let result = try XCTUnwrap(raw as? [String: Any])
     let ids = try XCTUnwrap(result["ids"] as? [String])
@@ -240,11 +250,28 @@ final class RunnerTests: XCTestCase {
     XCTAssertEqual(ids.count, 2)
     XCTAssertEqual(Set(ids).count, 2)
     XCTAssertEqual(Set(listed), Set(ids))
+    XCTAssertEqual(result["openingMatches"] as? Bool, true)
+    XCTAssertEqual(result["updateMatches"] as? Bool, true)
+    XCTAssertEqual(result["closed"] as? Bool, true)
     XCTAssertTrue(FileManager.default.fileExists(atPath: directory.appendingPathComponent("OfficialHostCI/sessions/sessions.sqlite").path))
+    bridge.invalidate()
+    // Acknowledge Host disposal before returning to the outer test, which
+    // removes the directory. Node must not write diagnostics into a removed path.
+    let stopped = directory.appendingPathComponent("official-host-ci-stopped")
+    try Data(#"{"stop":true}"#.utf8).write(to: requestURL, options: .atomic)
+    let stopDeadline = ProcessInfo.processInfo.systemUptime + 8
+    while ProcessInfo.processInfo.systemUptime < stopDeadline && !FileManager.default.fileExists(atPath: stopped.path) {
+      if let failure = try? String(contentsOf: errorURL, encoding: .utf8) {
+        throw NSError(domain: "OfficialHostCI", code: 1, userInfo: [NSLocalizedDescriptionKey: failure])
+      }
+      try await Task.sleep(for: .milliseconds(25))
+    }
+    _ = try XCTUnwrap(try? Data(contentsOf: stopped), "Official Host did not acknowledge shutdown")
     let report = try JSONSerialization.data(withJSONObject: [
       "webKitToEmbeddedOfficialSessionRpcVerified": true, "sessionsCreated": ids.count,
       "sqlitePresent": true, "usesLocalTCP": false, "officialUIReady": false,
-      "stage": "ci-only-unary-session-transport",
+      "nodeStreamSnapshotVerified": true, "nodeStreamTitleEventVerified": true, "hostShutdownAcknowledged": true,
+      "stage": "ci-only-session-transport",
     ])
     let attachment = XCTAttachment(data: report, uniformTypeIdentifier: "public.json")
     attachment.name = "official-web-embedded-session-rpc.json"
@@ -330,6 +357,68 @@ final class RunnerTests: XCTestCase {
     ])
     let attachment = XCTAttachment(data: report, uniformTypeIdentifier: "public.json")
     attachment.name = "official-web-module-bootstrap.json"
+    attachment.lifetime = .keepAlways
+    add(attachment)
+  }
+
+  /// Mount the stock renderer and actual official sidebar modules from the
+  /// cloud preview. Host calls are deliberately unavailable in this DOM gate.
+  @MainActor
+  func testOfficialSidebarRendersWithoutTCP() async throws {
+    let directory = Bundle(for: Self.self).bundleURL.appendingPathComponent("dsh-web-shell-preview", isDirectory: true)
+    let assets = try IosOfficialWebAssets(previewDirectory: directory)
+    let setup = """
+      window.__iosPreviewErrors = [];
+      addEventListener('error', event => window.__iosPreviewErrors.push(String(event.message || event.target?.src || 'resource-error')), true);
+      addEventListener('unhandledrejection', event => window.__iosPreviewErrors.push(String(event.reason)));
+      addEventListener('securitypolicyviolation', event => window.__iosPreviewErrors.push(event.violatedDirective + ': ' + event.blockedURI));
+      window.__DSH_TRANSPORT__ = Object.freeze({ownsHost: true,
+        fetch: async () => new Response(null, {status: 503}),
+        openStream: async function* () { throw new Error('IOS_PREVIEW_NO_HOST'); },
+      });
+      """
+    let bridge = IosOfficialWebBridge(assets: assets, documentStartScript: setup) { _, _ in
+      .response(.init(status: 503))
+    }
+    defer { bridge.invalidate() }
+    bridge.load()
+    let deadline = ProcessInfo.processInfo.systemUptime + 18
+    var state: [String: Any] = [:]
+    repeat {
+      if bridge.isReady {
+        let observation = try await bridge.webView.evaluateJavaScript("""
+          JSON.stringify({mode: globalThis.__ModuleLoader__?.mode,
+            entries: globalThis.__DSH_BOOT__?.entries?.length,
+            bootVisible: !!document.querySelector('#root > [data-dsh-boot]'),
+            layout: !!document.querySelector('#root [data-slot="root"]'),
+            sidebar: !!document.querySelector('#root [data-slot="sidebar"]'),
+            sidebarControl: !!document.querySelector('#root [data-sidebar-opener], #root [data-sidebar-toggle]'),
+            composer: !!document.querySelector('#root [data-composer-input]'),
+            slotErrors: Array.from(document.querySelectorAll('#root [data-slot-error]'), x => x.getAttribute('data-slot-error')),
+            errors: globalThis.__iosPreviewErrors?.slice(0, 8),
+            body: document.querySelector('#root')?.textContent?.slice(0, 1024)})
+          """) as? String
+        if let observation {
+          state = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(observation.utf8)) as? [String: Any])
+        }
+        if state["sidebarControl"] as? Bool == true { break }
+      }
+      try await Task.sleep(for: .milliseconds(100))
+    } while ProcessInfo.processInfo.systemUptime < deadline
+    let detail = "\(state)"
+    XCTAssertEqual(state["mode"] as? String, "live", detail)
+    XCTAssertEqual(state["entries"] as? Int, 20, detail)
+    XCTAssertEqual(state["bootVisible"] as? Bool, false, detail)
+    XCTAssertEqual(state["layout"] as? Bool, true, detail)
+    XCTAssertEqual(state["sidebar"] as? Bool, true, detail)
+    XCTAssertEqual(state["sidebarControl"] as? Bool, true, detail)
+    XCTAssertEqual(state["slotErrors"] as? [String], [], detail)
+    XCTAssertTrue(assets.servedPaths.contains { $0.hasPrefix("/plugins/??") && $0.count > 240 })
+    state["stage"] = "official-shell-render-without-host"
+    state["usesLocalTCP"] = false
+    state["officialUIReady"] = false
+    let attachment = XCTAttachment(data: try JSONSerialization.data(withJSONObject: state), uniformTypeIdentifier: "public.json")
+    attachment.name = "official-web-sidebar-render.json"
     attachment.lifetime = .keepAlways
     add(attachment)
   }

@@ -123,6 +123,10 @@ jobs:
         with:
           name: ios-dsh-loader-input
           path: ${{ runner.temp }}/ios-loader-input
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53
+        with:
+          name: ios-official-web-shell-preview
+          path: app/ios/RunnerTests/dsh-web-shell-preview
       - name: Stage the exact tested DSH bundles in native resources
         run: |
           for phase in loader core persistence chat; do
@@ -167,14 +171,26 @@ jobs:
           device=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for group in d["devices"].values() for x in group if x["isAvailable"] and x["name"].startswith("iPhone")))')
           xcrun simctl boot "$device" || true
           xcrun simctl bootstatus "$device" -b
-          xcodebuild test -workspace app/ios/Runner.xcworkspace -scheme Runner -configuration Debug -destination "id=$device" -resultBundlePath "$RUNNER_TEMP/ios-node-probe.xcresult" CODE_SIGNING_ALLOWED=NO | tee "$RUNNER_TEMP/ios-node-probe.log"
+          # Run the process-wide Node test separately from render-only tests.
+          # This gives both gates an independent App lifecycle and result bundle.
+          set +e
+          xcodebuild test -workspace app/ios/Runner.xcworkspace -scheme Runner -configuration Debug -destination "id=$device" -parallel-testing-enabled NO -only-testing:RunnerTests/RunnerTests/testEmbeddedNodeExecutesInsideIOS -resultBundlePath "$RUNNER_TEMP/ios-node-probe.xcresult" CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$RUNNER_TEMP/ios-node-probe.log"
+          engine_result=$?
+          xcodebuild test -workspace app/ios/Runner.xcworkspace -scheme Runner -configuration Debug -destination "id=$device" -parallel-testing-enabled NO -skip-testing:RunnerTests/RunnerTests/testEmbeddedNodeExecutesInsideIOS -resultBundlePath "$RUNNER_TEMP/ios-web-render.xcresult" CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$RUNNER_TEMP/ios-web-render.log"
+          web_result=$?
+          test "$engine_result" -eq 0 && test "$web_result" -eq 0
       - name: Export actual simulator JSON observations
         if: always()
         run: |
           result="$RUNNER_TEMP/ios-node-probe.xcresult"
-          if [ -d "$result" ]; then
+          if [ -f "$result/Info.plist" ]; then
             xcrun xcresulttool get test-results summary --path "$result" | tee dist/ios/simulator-test-summary.json
             xcrun xcresulttool export attachments --path "$result" --output-path dist/ios/test-attachments
+          fi
+          web="$RUNNER_TEMP/ios-web-render.xcresult"
+          if [ -f "$web/Info.plist" ]; then
+            xcrun xcresulttool get test-results summary --path "$web" | tee dist/ios/web-simulator-test-summary.json
+            xcrun xcresulttool export attachments --path "$web" --output-path dist/ios/web-test-attachments
           fi
       - name: Build unsigned iPhone and iPad application
         working-directory: app
@@ -208,6 +224,8 @@ jobs:
             runtime/.cache/ios/*report*.json
             ${{ runner.temp }}/ios-node-probe.xcresult
             ${{ runner.temp }}/ios-node-probe.log
+            ${{ runner.temp }}/ios-web-render.xcresult
+            ${{ runner.temp }}/ios-web-render.log
             ${{ runner.temp }}/ios-simulator-build.log
             app/ios/Pods/Target Support Files/DshEmbeddedNode/
           if-no-files-found: warn

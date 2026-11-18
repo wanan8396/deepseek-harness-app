@@ -10,6 +10,7 @@
 		D510C0017A688A1C00000001 /* chat-ci-entry.cjs in Resources */ = {isa = PBXBuildFile; fileRef = D510C0017A688A1C00000002 /* chat-ci-entry.cjs */; };
 		D510C0027A688A1C00000001 /* official-web-bridge.js in Resources */ = {isa = PBXBuildFile; fileRef = D510C0027A688A1C00000002 /* official-web-bridge.js */; };
 		D510C0037A688A1C00000001 /* dsh-official-host-ci in Resources */ = {isa = PBXBuildFile; fileRef = D510C0037A688A1C00000002 /* dsh-official-host-ci */; };
+		D510C0047A688A1C00000001 /* dsh-web-shell-preview in Resources */ = {isa = PBXBuildFile; fileRef = D510C0047A688A1C00000002 /* dsh-web-shell-preview */; };
 		1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */ = {isa = PBXBuildFile; fileRef = 1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */; };
 		331C808B294A63AB00263BE5 /* RunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331C807B294A618700263BE5 /* RunnerTests.swift */; };
 		3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */ = {isa = PBXBuildFile; fileRef = 3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */; };
@@ -47,6 +48,7 @@
 		D510C0017A688A1C00000002 /* chat-ci-entry.cjs */ = {isa = PBXFileReference; lastKnownFileType = text; name = "chat-ci-entry.cjs"; path = "../../runtime/ios/chat-ci-entry.cjs"; sourceTree = SOURCE_ROOT; };
 		D510C0027A688A1C00000002 /* official-web-bridge.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; name = "official-web-bridge.js"; path = "../../runtime/ios/official-web-bridge.js"; sourceTree = SOURCE_ROOT; };
 		D510C0037A688A1C00000002 /* dsh-official-host-ci */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "dsh-official-host-ci"; sourceTree = "<group>"; };
+		D510C0047A688A1C00000002 /* dsh-web-shell-preview */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "dsh-web-shell-preview"; sourceTree = "<group>"; };
 		1498D2321E8E86230040F4C2 /* GeneratedPluginRegistrant.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GeneratedPluginRegistrant.h; sourceTree = "<group>"; };
 		1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = GeneratedPluginRegistrant.m; sourceTree = "<group>"; };
 		331C807B294A618700263BE5 /* RunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunnerTests.swift; sourceTree = "<group>"; };
@@ -83,6 +85,7 @@
 				D510C0017A688A1C00000002 /* chat-ci-entry.cjs */,
 				D510C0027A688A1C00000002 /* official-web-bridge.js */,
 				D510C0037A688A1C00000002 /* dsh-official-host-ci */,
+				D510C0047A688A1C00000002 /* dsh-web-shell-preview */,
 			);
 			path = RunnerTests;
 			sourceTree = "<group>";
@@ -224,6 +227,7 @@
 				D510C0017A688A1C00000001 /* chat-ci-entry.cjs in Resources */,
 				D510C0027A688A1C00000001 /* official-web-bridge.js in Resources */,
 				D510C0037A688A1C00000001 /* dsh-official-host-ci in Resources */,
+				D510C0047A688A1C00000001 /* dsh-web-shell-preview in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
