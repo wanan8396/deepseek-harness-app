@@ -36,14 +36,14 @@ iPhone／iPad 可从本机能力页进入临时 **本机聊天**，使用 DeepSe
 2. 在 GitHub 上生成中英文文案，执行 Python/Node/Flutter 回归。
 3. Ubuntu 先验证 Loader、AgentLoop、SQLite 持久化和本机聊天；将同一次运行的四个受审资源包交给 Xcode。XCTest 在 iOS 模拟器的 App 进程内执行 Swift 信箱、真实 DSH 和官方模型适配器；只替换出站 HTTP 响应为测试 SSE，不向 DeepSeek 发送请求。独立验证流式输出、取消、停止重开后的历史和认证错误。
 4. 构建未签名的 iPhone/iPad Release App；检查 Mach-O 平台、设备类型、框架和探针资源。
-5. 保存构建核验、XCTest 结果与未签名设备 App。
+5. 在 `ios-build-and-probe` 归档保存构建核验、独立的引擎与 WebKit XCTest 结果、未签名设备 App，以及以提交短 SHA 命名的 `*-unsigned.ipa` 和 SHA-256 校验文件。只有通过本轮测试与设备包检查才进入 IPA 打包步骤。
 
-macOS runner 仅是 Xcode 构建环境，产物目标仍为 iOS。未签名 App 不是可直接安装的 IPA；真机安装还需 Apple 开发签名和对应设备配置。模拟器成功也不代表 iPhone 真机已验收。
+macOS runner 仅是 Xcode 构建环境，产物目标仍为 iOS。未签名 IPA 是设备包，不可直接安装；真机安装还需 Apple 签名和相应设备配置。模拟器成功也不代表 iPhone 真机已验收。
 
 ## 支持范围
 
 - 交付的临时界面是单会话纯文本聊天，支持在 App 私有工作区列目录、读文本、创建文本文件。创建前需要用户允许一次；未允许时不写文件。
-- 官方 WebKit 资源与官方会话 API 单独测试。即便测试页面成功创建并列出多条会话，也不等于正式界面已支持多会话。目前官方聊天、侧栏、模型设置、附件和第三方插件还未接入正式入口。
+- iPhone 16 Pro（iOS 18.5）模拟器分别验证了：WebKit 经 Swift 调用 App 内官方 Node Host，创建并列出两条会话、写入 SQLite；以及离线加载 20 个官方前端模块，渲染布局、侧栏和输入框。这两项均为测试入口的证据，不代表输入框已能发送消息或侧栏已能切换真实会话。目前官方聊天、侧栏、模型设置、附件和第三方插件还未接入正式入口。
 - iOS 版本不等同于 Android Root／PRoot 或 Linux 环境，没有终端、Shell、桌面原生插件及对其他 App 文件的访问。
 - 聊天与存储在模拟器内验证；未用真机真实 API Key 验证付费接口，也未验证强制结束 App 后的恢复或持续后台运行。
 - 完整 profile 的 `node-addon-require-builtin` 与内部 ESM/CJS 入口仍需单独适配。最小相对路径 Loader 不挂载该路径，也没有替代 shim；Mac arm64 原生扩展不等于 iOS arm64 原生扩展。

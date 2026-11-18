@@ -19,7 +19,8 @@ private final class WebAssetNavigation: NSObject, WKNavigationDelegate {
 final class RunnerTests: XCTestCase {
   // This runs node_start inside the actual iOS Simulator application process.
   // It deliberately never treats a version/capability probe as a DSH boot.
-  func testEmbeddedNodeExecutesInsideIOS() throws {
+  @MainActor
+  func testEmbeddedNodeExecutesInsideIOS() async throws {
     let root = Bundle(for: DshEmbeddedNode.self)
     let probe = try XCTUnwrap(root.path(forResource: "probe", ofType: "cjs"))
     XCTAssertNotNil(root.path(forResource: "meta-probe", ofType: "mjs"))
@@ -36,16 +37,19 @@ final class RunnerTests: XCTestCase {
     try hostBundle.path.write(to: directory.appendingPathComponent("official-host-path.txt"), atomically: true, encoding: .utf8)
     let output = directory.appendingPathComponent(UUID().uuidString.lowercased() + ".json")
     let mailbox = try IosChatMailbox(reportURL: output)
+    // Start the real page before Node's cold initialization. On a loaded CI
+    // runner WebKit's first GPU process took over 13 seconds to launch.
+    let bridge = try await startOfficialWebSessionPage(directory)
+    defer { bridge.invalidate() }
     XCTAssertTrue(DshEmbeddedNode.startProbe(atPath: script, reportPath: output.path) { code in
       XCTFail("Node runtime exited unexpectedly: \(code)")
     })
-    let ready = expectation(description: "Actual embedded JavaScript wrote its report")
-    let timer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { timer in
-      guard FileManager.default.fileExists(atPath: output.path) else { return }
-      timer.invalidate(); ready.fulfill()
+    let reportDeadline = ProcessInfo.processInfo.systemUptime + 45
+    while !FileManager.default.fileExists(atPath: output.path) && ProcessInfo.processInfo.systemUptime < reportDeadline {
+      try await Task.sleep(for: .milliseconds(100))
     }
-    wait(for: [ready], timeout: 45)
-    timer.invalidate()
+    _ = try XCTUnwrap(FileManager.default.fileExists(atPath: output.path) ? true : nil,
+      "Embedded Node did not write its probe report")
     let data = try Data(contentsOf: output)
     let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.json")
     attachment.name = "embedded-node-capability-report.json"
@@ -164,23 +168,22 @@ final class RunnerTests: XCTestCase {
     evidence.lifetime = .keepAlways
     add(evidence)
 
-    let webFinished = expectation(description: "WebKit reached the embedded official session Host")
-    Task { @MainActor in
-      defer { webFinished.fulfill() }
-      do { try await verifyOfficialWebSessionRPC(directory) }
-      catch { XCTFail("Official WebKit session RPC: \(error)") }
-    }
-    wait(for: [webFinished], timeout: 55)
+    try await verifyOfficialWebSessionRPC(directory, bridge: bridge)
   }
 
   @MainActor
-  private func verifyOfficialWebSessionRPC(_ directory: URL) async throws {
+  private func startOfficialWebSessionPage(_ directory: URL) async throws -> IosOfficialWebBridge {
     let requestURL = directory.appendingPathComponent("official-rpc-request.json")
     let replyURL = directory.appendingPathComponent("official-rpc-response.json")
     let errorURL = directory.appendingPathComponent("official-host-ci-error")
     let script = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "official-web-bridge", withExtension: "js"))
-    let bridge = IosOfficialWebBridge.ciFixture(schemeHandler: IosOfficialWebAssets(),
-      documentStartScript: try String(contentsOf: script, encoding: .utf8)) { operation, _ in
+    let assets = IosOfficialWebAssets()
+    var busy = false
+    let bridge = IosOfficialWebBridge(assets: assets,
+      documentStartScript: try String(contentsOf: script, encoding: .utf8), handler: { operation, _ in
+      guard !busy else { throw URLError(.resourceUnavailable) }
+      busy = true
+      defer { busy = false }
       switch operation {
       case .request(let request):
         let body = try XCTUnwrap(request.body.flatMap { String(data: $0, encoding: .utf8) })
@@ -203,14 +206,25 @@ final class RunnerTests: XCTestCase {
         }
         throw URLError(.timedOut)
       }
-    }
-    defer { bridge.invalidate() }
+    })
     bridge.load()
-    let deadline = ProcessInfo.processInfo.systemUptime + 10
+    let deadline = ProcessInfo.processInfo.systemUptime + 35
     while !bridge.isReady && ProcessInfo.processInfo.systemUptime < deadline {
+      if let error = bridge.navigationFailure { throw error }
       try await Task.sleep(for: .milliseconds(25))
     }
-    _ = try XCTUnwrap(bridge.isReady ? true : nil, "App bootstrap document did not commit")
+    _ = try XCTUnwrap(bridge.isReady ? true : nil,
+      "App bootstrap document did not commit; served=\(assets.servedPaths.sorted()), URL=\(String(describing: bridge.webView.url))")
+    // The scheme response can commit before document-start scripts execute.
+    let transport = try await pageResult(bridge.webView, "return typeof globalThis.__DSH_TRANSPORT__?.openStream === 'function';")
+    XCTAssertEqual(transport as? Bool, true)
+    return bridge
+  }
+
+  @MainActor
+  private func verifyOfficialWebSessionRPC(_ directory: URL, bridge: IosOfficialWebBridge) async throws {
+    let requestURL = directory.appendingPathComponent("official-rpc-request.json")
+    let errorURL = directory.appendingPathComponent("official-host-ci-error")
     let raw = try await pageResult(bridge.webView, """
       let count = 0;
       async function rpc(method, args) {
@@ -377,14 +391,15 @@ final class RunnerTests: XCTestCase {
         openStream: async function* () { throw new Error('IOS_PREVIEW_NO_HOST'); },
       });
       """
-    let bridge = IosOfficialWebBridge(assets: assets, documentStartScript: setup) { _, _ in
+    let bridge = IosOfficialWebBridge(assets: assets, documentStartScript: setup, handler: { _, _ in
       .response(.init(status: 503))
-    }
+    })
     defer { bridge.invalidate() }
     bridge.load()
     let deadline = ProcessInfo.processInfo.systemUptime + 18
     var state: [String: Any] = [:]
     repeat {
+      if let error = bridge.navigationFailure { throw error }
       if bridge.isReady {
         let observation = try await bridge.webView.evaluateJavaScript("""
           JSON.stringify({mode: globalThis.__ModuleLoader__?.mode,

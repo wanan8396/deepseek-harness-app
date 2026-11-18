@@ -37,6 +37,7 @@ public final class IosOfficialWebBridge: NSObject, WKScriptMessageHandlerWithRep
   private let onInvalidate: (UInt64) -> Void
   private var generation: UInt64 = 1
   public private(set) var isReady = false
+  public private(set) var navigationFailure: Error?
 
   public init(assets: IosOfficialWebAssets, documentStartScript: String, handler: @escaping Handler,
               onInvalidate: @escaping (UInt64) -> Void = { _ in }) {
@@ -62,7 +63,10 @@ public final class IosOfficialWebBridge: NSObject, WKScriptMessageHandlerWithRep
                          handler: handler, onInvalidate: onInvalidate)
   }
 
-  public func load() { webView.load(URLRequest(url: IosOfficialWebAssets.bootstrapURL)) }
+  public func load() {
+    navigationFailure = nil
+    webView.load(URLRequest(url: IosOfficialWebAssets.bootstrapURL))
+  }
 
   public func invalidate() {
     let current = generation
@@ -157,14 +161,17 @@ public final class IosOfficialWebBridge: NSObject, WKScriptMessageHandlerWithRep
   }
 
   public func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+    navigationFailure = error
     invalidate()
   }
 
   public func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+    navigationFailure = error
     invalidate()
   }
 
   public func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+    navigationFailure = NSError(domain: WKErrorDomain, code: WKError.Code.webContentProcessTerminated.rawValue)
     invalidate()
   }
 }

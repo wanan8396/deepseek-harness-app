@@ -39,6 +39,8 @@ try {
   Socket.prototype.connect = block('connect');
   globalThis.fetch = block('fetch');
   const manifests = new Map();
+  const licenseSHA256 = 'ebb4f09972aee8608be255debaf78451a68e95c290f55c240dec2ecfa16ea6be';
+  let license;
   for (const pkg of packages) {
     const key = `node_modules/${pkg}`;
     const manifest = JSON.parse(await readFile(pathFor(pkg, 'package.json')));
@@ -46,6 +48,9 @@ try {
     assert.equal(manifest.version, '0.2.2-rc.3');
     assert.equal(manifest.version, locked[key].version);
     assert.equal(manifest.dsh.client.platform, 'web');
+    assert.equal(manifest.license, 'MIT');
+    license = await readFile(pathFor(pkg, 'LICENSE'));
+    assert.equal(sha256(license), licenseSHA256, pkg);
     manifests.set(pkg, manifest.dsh.client);
   }
   // The npm-ci seed is disposable. Place the same audited persistence adapter
@@ -97,9 +102,11 @@ try {
   assert(cspScriptHashes.length >= 3);
   const htmlBytes = Buffer.from(html);
   await writeFile(join(stage, 'index.html'), htmlBytes, { flag: 'wx' });
+  await writeFile(join(stage, 'LICENSE'), license, { flag: 'wx' });
   await writeFile(join(stage, 'distribution-manifest.json'), JSON.stringify({
     schemaVersion: 1, stage: 'official-shell-preview', officialUIReady: false, graph, resources, cspScriptHashes,
     index: { path: 'index.html', bytes: htmlBytes.length, sha256: sha256(htmlBytes) },
+    license: { path: 'LICENSE', bytes: license.length, sha256: licenseSHA256 },
     sourceLockSHA256: sha256(lock),
   }, null, 2), { flag: 'wx' });
   await host.dispose();

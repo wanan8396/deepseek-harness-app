@@ -36,14 +36,14 @@ The [iOS workflow](../.github/workflows/ios.yml) runs on branch pushes and manua
 2. Generate bilingual localization and run Python, Node and Flutter regressions on GitHub.
 3. Verify the Loader, AgentLoop, SQLite persistence and local chat on Ubuntu, then pass the same run's four reviewed bundles to Xcode. XCTest runs the Swift mailbox, actual DSH and official model adapter inside the iOS Simulator application process. It substitutes only the outbound fetch response with test SSE, without calling DeepSeek, and checks streaming, cancellation, history after restart, and auth errors.
 4. Build an unsigned iPhone/iPad Release application and verify its platform, device families, framework and probe resources.
-5. Preserve build verification, XCTest results and the unsigned device application.
+5. The `ios-build-and-probe` artifact preserves build verification, separate engine and WebKit XCTest results, the unsigned device app, and a commit-named `*-unsigned.ipa` with its SHA-256 checksum. IPA packaging follows the simulator and device bundle gates.
 
-The macOS runner supplies Xcode; the product target remains iOS. An unsigned application is not an installable IPA. Device installation requires Apple development signing and suitable provisioning. Simulator success is not physical iPhone acceptance.
+The macOS runner supplies Xcode; the product target remains iOS. The unsigned IPA is a device package, not directly installable. Device installation requires Apple signing and suitable provisioning. Simulator success is not physical iPhone acceptance.
 
 ## Supported scope
 
 - The interim product UI supports one text conversation and can list, read and create text files in the app's private workspace. Creating a file requires one-time user approval before writing.
-- The official WebKit assets and session API have separate tests. Multiple sessions in a test page do not make them available in the released app. The official chat, sidebar, model settings, attachments and third-party plugins are not attached to the production entry point.
+- Separate iPhone 16 Pro (iOS 18.5) simulator tests confirmed that WebKit can create and list two sessions through Swift and the embedded official Node Host, with SQLite present, and that the 20 offline official frontend modules render the layout, sidebar, and input box. The tests do not verify sending from that input or switching real sessions from the sidebar. The official chat, sidebar, model settings, attachments and third-party plugins are not attached to the production entry point.
 - iOS does not reproduce Android Root/PRoot or Linux. Terminal, shell, desktop native plugins and other apps' files are outside this port's supported capabilities.
 - Chat and persistence are checked in Simulator. The paid API has not been checked on a physical device with a live API key. Recovery after force-quitting and continuous background use are not verified.
 - Full profile resolution still needs separately adapted internal ESM/CJS access and `node-addon-require-builtin`. The relative-module Loader does not use that path or replace it with a shim. A macOS arm64 addon is not an iOS arm64 addon.

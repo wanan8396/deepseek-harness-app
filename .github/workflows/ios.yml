@@ -200,6 +200,29 @@ jobs:
           python3 tooling/verify_ios_build.py app/build/ios/iphoneos/Runner.app --output dist/ios/device-verification.json
           printf 'source=%s\ntarget=iPhone,iPad\nDSH_BOOT_VERIFIED=false\nSIGNING=none\n' "$GITHUB_SHA" > dist/ios/build-info.txt
           tar -czf dist/ios/unsigned-iphone-ipad-app.tar.gz -C app/build/ios/iphoneos Runner.app
+      - name: Package the verified device App as an unsigned IPA
+        run: |
+          set -euo pipefail
+          stage=$(mktemp -d "$RUNNER_TEMP/dsh-ios-ipa.XXXXXXXX")
+          trap 'rm -rf "$stage"' EXIT
+          mkdir "$stage/Payload"
+          ditto --norsrc app/build/ios/iphoneos/Runner.app "$stage/Payload/Runner.app"
+          ipa="$PWD/dist/ios/DeepSeek-Harness-iOS-${GITHUB_SHA:0:7}-unsigned.ipa"
+          ditto -c -k --norsrc --keepParent "$stage/Payload" "$ipa"
+          unzip -tq "$ipa"
+          python3 - "$ipa" <<'PY'
+          from pathlib import PurePosixPath
+          import plistlib, sys, zipfile
+          with zipfile.ZipFile(sys.argv[1]) as ipa:
+              for name in ipa.namelist():
+                  path = PurePosixPath(name)
+                  assert not path.is_absolute() and '..' not in path.parts and '\\' not in name
+                  assert path.parts[:2] == ('Payload', 'Runner.app') or name == 'Payload/'
+              info = plistlib.loads(ipa.read('Payload/Runner.app/Info.plist'))
+              assert info['CFBundleSupportedPlatforms'] == ['iPhoneOS'] and info['UIDeviceFamily'] == [1, 2]
+              assert 'Payload/Runner.app/' + info['CFBundleExecutable'] in ipa.namelist()
+          PY
+          (cd dist/ios && shasum -a 256 "${ipa##*/}" > "${ipa##*/}.sha256")
       - name: Enforce widget regression result after independent iOS builds
         if: always() && steps.widget-tests.outcome != 'success'
         run: |
