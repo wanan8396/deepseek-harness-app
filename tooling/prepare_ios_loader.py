@@ -296,6 +296,7 @@ def prepare(seed: Path, destination: Path, check: bool = False, phase: str = 'lo
         'core': ('core-probe.mjs', 'core-fixture-model.mjs'),
         'persistence': ('persistence-probe.mjs', 'sqlite-session-persistence.mjs', 'core-fixture-model.mjs'),
         'chat': ('chat-engine.mjs', 'chat-deepseek-provider.mjs', 'chat-mailbox.mjs',
+                 'chat-approval.mjs', 'chat-model-channel.mjs', 'chat-workspace-tools.mjs',
                  'sqlite-session-persistence.mjs'),
     }[phase]
     own_files = [ROOT / 'runtime/ios' / name for name in own_names]
@@ -320,7 +321,7 @@ def prepare(seed: Path, destination: Path, check: bool = False, phase: str = 'lo
             'loader': ['agents', 'models'],
             'core': ['web-profile', 'model-provider-network', 'concrete-session-persistence'],
             'persistence': ['web-profile', 'model-provider-network', 'official-jsonl-storage', 'chat-transport'],
-            'chat': ['web-profile', 'official-jsonl-storage', 'user-tools', 'attachments', 'remote-engine'],
+            'chat': ['web-profile', 'official-jsonl-storage', 'unrestricted-tools', 'attachments', 'remote-engine'],
         }[phase],
         'packages': [{'path': key, 'name': value[1]['name'], 'version': value[0]['version'],
                       'resolved': value[0]['resolved'], 'integrity': value[0]['integrity'],

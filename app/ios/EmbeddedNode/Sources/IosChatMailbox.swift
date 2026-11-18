@@ -1,12 +1,13 @@
+import CoreFoundation
 import Darwin
 import Foundation
 
 /// Native half of the file mailbox beside the one per-process Node probe report.
-/// The Flutter channel never accepts or returns a path. XCTest can attach to the
+/// The Flutter channel does not expose mailbox paths. XCTest can attach to the
 /// same mailbox with its own probe report URL and exercise the actual transport.
 public final class IosChatMailbox {
   public enum Method: String {
-    case start, snapshot, send, cancel, stop
+    case start, snapshot, send, cancel, stop, answerApproval
   }
 
   public struct Failure: Error {
@@ -39,7 +40,7 @@ public final class IosChatMailbox {
     "IOS_CHAT_STORAGE_FAILED", "IOS_CHAT_MODEL_FAILED", "IOS_CHAT_RESPONSE_LIMIT", "IOS_CHAT_UNAVAILABLE",
     "IOS_CHAT_INPUT_INVALID", "IOS_CHAT_AUTH_FAILED", "IOS_CHAT_RATE_LIMITED", "IOS_CHAT_TIMEOUT",
     "IOS_CHAT_NETWORK_FAILED", "IOS_CHAT_KEY_INVALID", "IOS_CHAT_BOOT_FAILED", "IOS_CHAT_STOPPED",
-    "IOS_CHAT_INVALID_REQUEST", "IOS_CHAT_PROTOCOL_ERROR",
+    "IOS_CHAT_INVALID_REQUEST", "IOS_CHAT_PROTOCOL_ERROR", "IOS_CHAT_CHANNEL_INVALID", "IOS_CHAT_APPROVAL_STALE",
   ]
 
   private let directory: Int32
@@ -88,36 +89,77 @@ public final class IosChatMailbox {
     _ method: Method, value: String? = nil,
     completion: @escaping (Result<[String: Any], Failure>) -> Void
   ) {
-    switch Self.parameters(for: method, value: value) {
+    let params: [String: Any]
+    switch method {
+    case .start: params = ["apiKey": value ?? ""]
+    case .send: params = ["text": value ?? ""]
+    case .snapshot, .cancel, .stop, .answerApproval:
+      guard value == nil else {
+        DispatchQueue.main.async { completion(.failure(Failure("IOS_CHAT_INVALID_REQUEST"))) }
+        return
+      }
+      params = [:]
+    }
+    request(method, params: params, completion: completion)
+  }
+
+  /// Submit a chat request with structured parameters, on the same ordered mailbox.
+  public func request(
+    _ method: Method, params: [String: Any],
+    completion: @escaping (Result<[String: Any], Failure>) -> Void
+  ) {
+    switch Self.parameters(for: method, params: params) {
     case .success(let params): submit(method, params: params, completion: completion)
     case .failure(let error):
       DispatchQueue.main.async { completion(.failure(error)) }
     }
   }
 
-  static func parameters(for method: Method, value: String?) -> Result<[String: String], Failure> {
+  static func parameters(for method: Method, params: [String: Any]) -> Result<[String: Any], Failure> {
+    let invalid = Failure("IOS_CHAT_INVALID_REQUEST")
     switch method {
     case .start:
-      guard let key = value?.trimmingCharacters(in: .whitespacesAndNewlines),
-            (1...1024).contains(key.utf8.count),
-            key.utf8.allSatisfy({ (0x21...0x7e).contains($0) }) else {
+      let keys = Set(params.keys)
+      let custom = keys == ["apiKey", "protocol", "baseUrl", "modelId"]
+      guard custom || keys == ["apiKey"], let rawKey = params["apiKey"] as? String else {
+        return .failure(invalid)
+      }
+      let key = rawKey.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard (1...1024).contains(key.utf8.count), key.utf8.allSatisfy({ (0x21...0x7e).contains($0) }) else {
         return .failure(Failure("IOS_CHAT_KEY_INVALID"))
       }
-      return .success(["apiKey": key])
+      guard custom else { return .success(["apiKey": key]) }
+      guard let channelProtocol = params["protocol"] as? String,
+            let baseUrl = params["baseUrl"] as? String, let modelId = params["modelId"] as? String else {
+        return .failure(invalid)
+      }
+      // Bound the inputs; JS owns the allowed protocols, URL rules and model syntax.
+      guard (1...32).contains(channelProtocol.utf16.count), (1...2048).contains(baseUrl.utf16.count),
+            (1...256).contains(modelId.utf16.count) else {
+        return .failure(Failure("IOS_CHAT_CHANNEL_INVALID"))
+      }
+      return .success(["apiKey": key, "protocol": channelProtocol, "baseUrl": baseUrl, "modelId": modelId])
     case .send:
-      guard let value = value, value.utf8.count <= 8192,
-            !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      guard Set(params.keys) == ["text"], let text = params["text"] as? String else {
+        return .failure(invalid)
+      }
+      guard text.utf8.count <= 8192, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
         return .failure(Failure("IOS_CHAT_INPUT_INVALID"))
       }
-      return .success(["text": value])
+      return .success(["text": text])
+    case .answerApproval:
+      guard Set(params.keys) == ["id", "allowed"], let id = params["id"] as? String,
+            isLowercaseUUID(id), let allowed = jsonBoolean(params["allowed"]) else {
+        return .failure(invalid)
+      }
+      return .success(["id": id, "allowed": allowed])
     case .snapshot, .cancel, .stop:
-      guard value == nil else { return .failure(Failure("IOS_CHAT_INVALID_REQUEST")) }
-      return .success([:])
+      return params.isEmpty ? .success([:]) : .failure(invalid)
     }
   }
 
   func submit(
-    _ method: Method, params: [String: String],
+    _ method: Method, params: [String: Any],
     completion: @escaping (Result<[String: Any], Failure>) -> Void
   ) {
     let id = UUID().uuidString.lowercased()
@@ -249,16 +291,42 @@ public final class IosChatMailbox {
       return .failure(Failure(error))
     }
     guard Set(envelope.keys) == ["id", "result"], let result = envelope["result"] as? [String: Any],
-          Set(result.keys) == ["state", "messages", "draft", "errorCode"],
+          Set(result.keys) == ["state", "messages", "draft", "errorCode", "approval"],
           let state = result["state"] as? String, ["ready", "running", "stopped"].contains(state),
           let messages = result["messages"] as? [[String: Any]], result["draft"] is String,
           let error = result["errorCode"], error is NSNull || Self.publicCodes.contains(error as? String ?? ""),
+          let approval = result["approval"], Self.isApproval(approval),
           messages.allSatisfy({ message in
             Set(message.keys) == ["role", "text"]
-              && ["user", "assistant"].contains(message["role"] as? String ?? "")
+              && ["user", "assistant", "tool"].contains(message["role"] as? String ?? "")
               && message["text"] is String
           }) else { throw Failure("IOS_CHAT_PROTOCOL_ERROR") }
     return .success(result)
+  }
+
+  private static func isApproval(_ value: Any) -> Bool {
+    if value is NSNull { return true }
+    guard let approval = value as? [String: Any],
+          Set(approval.keys) == ["id", "toolName", "path", "byteLength", "preview", "previewTruncated"],
+          let id = approval["id"] as? String, isLowercaseUUID(id),
+          approval["toolName"] as? String == "workspace_create_text",
+          let path = approval["path"] as? String, (1...480).contains(path.utf8.count),
+          let bytes = approval["byteLength"] as? NSNumber, CFGetTypeID(bytes) == CFNumberGetTypeID(),
+          !["f", "d"].contains(String(cString: bytes.objCType)),
+          let byteLength = bytes as? Int, (0...4096).contains(byteLength),
+          let preview = approval["preview"] as? String, preview.utf8.count <= 512,
+          jsonBoolean(approval["previewTruncated"]) != nil else { return false }
+    return true
+  }
+
+  private static func isLowercaseUUID(_ value: String) -> Bool {
+    value.utf8.count == 36 && UUID(uuidString: value)?.uuidString.lowercased() == value
+  }
+
+  private static func jsonBoolean(_ value: Any?) -> Bool? {
+    // `as? Bool` on NSNumber also accepts numeric 0 and 1.
+    guard let number = value as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID() else { return nil }
+    return number.boolValue
   }
 
   private func remove(_ name: String) { _ = unlinkat(directory, name, 0) }

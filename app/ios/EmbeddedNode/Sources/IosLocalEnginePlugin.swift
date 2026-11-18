@@ -41,29 +41,23 @@ public final class IosLocalEnginePlugin: NSObject, FlutterPlugin {
     case "chatSend": handleChat(.send, call.arguments, result: result)
     case "chatCancel": handleChat(.cancel, call.arguments, result: result)
     case "chatStop": handleChat(.stop, call.arguments, result: result)
+    case "chatAnswerApproval": handleChat(.answerApproval, call.arguments, result: result)
     default: result(FlutterMethodNotImplemented)
     }
   }
 
   private func handleChat(_ method: IosChatMailbox.Method, _ arguments: Any?, result: @escaping FlutterResult) {
-    let value: String?
-    switch method {
-    case .start, .send:
-      let name = method == .start ? "apiKey" : "text"
-      guard let args = arguments as? [String: Any], args.count == 1, let text = args[name] as? String else {
-        result(Self.chatError("IOS_CHAT_INVALID_REQUEST"))
-        return
-      }
-      value = text
-    case .snapshot, .cancel, .stop:
-      guard arguments == nil || arguments is NSNull || (arguments as? [String: Any])?.isEmpty == true else {
-        result(Self.chatError("IOS_CHAT_INVALID_REQUEST"))
-        return
-      }
-      value = nil
+    let args: [String: Any]
+    if arguments == nil || arguments is NSNull {
+      args = [:]
+    } else if let dictionary = arguments as? [String: Any] {
+      args = dictionary
+    } else {
+      result(Self.chatError("IOS_CHAT_INVALID_REQUEST"))
+      return
     }
 
-    switch IosChatMailbox.parameters(for: method, value: value) {
+    switch IosChatMailbox.parameters(for: method, params: args) {
     case .failure(let failure): result(Self.chatError(failure.code))
     case .success(let params):
       if method == .start { ensureNodeStarted() }
@@ -75,9 +69,13 @@ public final class IosLocalEnginePlugin: NSObject, FlutterPlugin {
           }
         }
       } else if state == "idle" {
-        // Looking at chat or stopping an unopened chat does not start Node.
-        if method == .send { result(Self.chatError("IOS_CHAT_NOT_STARTED")) }
-        else { result(["state": "stopped", "messages": [], "draft": "", "errorCode": NSNull()] as [String: Any]) }
+        // Chat calls other than start do not start Node.
+        switch method {
+        case .send: result(Self.chatError("IOS_CHAT_NOT_STARTED"))
+        case .answerApproval: result(Self.chatError("IOS_CHAT_APPROVAL_STALE"))
+        default:
+          result(["state": "stopped", "messages": [], "draft": "", "errorCode": NSNull(), "approval": NSNull()] as [String: Any])
+        }
       } else {
         result(Self.chatError("IOS_CHAT_UNAVAILABLE"))
       }

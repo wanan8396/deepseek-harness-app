@@ -11,15 +11,17 @@ const MAX_REQUEST = 16 * 1024;
 const MAX_RESPONSE = 256 * 1024;
 const RESPONSE_TTL = 2 * 60_000;
 const REQUEST_TTL = 30_000;
-const METHODS = new Set(['start', 'snapshot', 'send', 'cancel', 'stop']);
+const METHODS = new Set(['start', 'snapshot', 'send', 'cancel', 'stop', 'answerApproval']);
+const APPROVAL_ID = new RegExp(`^${ID}$`);
 const CHAT_ERRORS = new Set([
   'IOS_CHAT_BAD_REQUEST', 'IOS_CHAT_REQUEST_EXPIRED', 'IOS_CHAT_NOT_STARTED', 'IOS_CHAT_BUSY',
   'IOS_CHAT_START_FAILED', 'IOS_CHAT_SEND_FAILED', 'IOS_CHAT_CANCEL_FAILED', 'IOS_CHAT_STOP_FAILED',
   'IOS_CHAT_STORAGE_FAILED', 'IOS_CHAT_MODEL_FAILED', 'IOS_CHAT_RESPONSE_LIMIT', 'IOS_CHAT_UNAVAILABLE',
   'IOS_CHAT_INPUT_INVALID', 'IOS_CHAT_AUTH_FAILED', 'IOS_CHAT_RATE_LIMITED', 'IOS_CHAT_TIMEOUT',
   'IOS_CHAT_NETWORK_FAILED', 'IOS_CHAT_KEY_INVALID', 'IOS_CHAT_BOOT_FAILED', 'IOS_CHAT_STOPPED',
+  'IOS_CHAT_CHANNEL_INVALID', 'IOS_CHAT_APPROVAL_STALE',
 ]);
-const STOPPED = Object.freeze({ state: 'stopped', messages: [], draft: '', errorCode: null });
+const STOPPED = Object.freeze({ state: 'stopped', messages: [], draft: '', errorCode: null, approval: null });
 const missing = (err) => err?.code === 'ENOENT';
 const drop = async (file) => { try { await unlink(file); } catch (err) { if (!missing(err)) throw err; } };
 const publicCode = (error, fallback) => CHAT_ERRORS.has(error?.code) ? error.code : fallback;
@@ -46,8 +48,13 @@ async function consume(file, id) {
         || !METHODS.has(value.method) || !isRecord(value.params)) fail('IOS_CHAT_BAD_REQUEST');
     const { method, params } = value;
     if (method === 'start') {
-      if (!exactKeys(params, ['apiKey']) || typeof params.apiKey !== 'string'
-          || !/^[\x21-\x7e]{1,1024}$/.test(params.apiKey)) fail('IOS_CHAT_BAD_REQUEST');
+      const custom = exactKeys(params, ['apiKey', 'protocol', 'baseUrl', 'modelId']);
+      if ((!custom && !exactKeys(params, ['apiKey'])) || typeof params.apiKey !== 'string'
+          || !params.apiKey.length || params.apiKey.length > 1024 || /[^\x21-\x7e]/.test(params.apiKey)) fail('IOS_CHAT_BAD_REQUEST');
+      if (custom && ['protocol', 'baseUrl', 'modelId'].some(name => typeof params[name] !== 'string')) fail('IOS_CHAT_BAD_REQUEST');
+    } else if (method === 'answerApproval') {
+      if (!exactKeys(params, ['id', 'allowed']) || typeof params.id !== 'string' || params.id.length !== 36
+          || !APPROVAL_ID.test(params.id) || typeof params.allowed !== 'boolean') fail('IOS_CHAT_BAD_REQUEST');
     } else if (method === 'send') {
       if (!exactKeys(params, ['text']) || typeof params.text !== 'string' || !params.text.isWellFormed()
           || !params.text.trim() || Buffer.byteLength(params.text) > 8192) fail('IOS_CHAT_BAD_REQUEST');
@@ -90,15 +97,19 @@ export function startChatMailbox(reportPath, { pollMs = 80 } = {}) {
     switch (value.method) {
       case 'start': {
         if (engine) return engine.snapshot();
-        const apiKey = value.params.apiKey;
+        const { apiKey, protocol, baseUrl, modelId } = value.params;
         value.params.apiKey = '';
-        engine = await createChatEngine({ directory: dataDir, apiKey });
+        const channel = protocol === undefined ? undefined : { protocol, baseUrl, modelId };
+        engine = await createChatEngine({ directory: dataDir, apiKey, channel });
         return engine.snapshot();
       }
       case 'snapshot': return engine ? engine.snapshot() : STOPPED;
       case 'send':
         if (!engine) fail('IOS_CHAT_NOT_STARTED');
         return engine.send(value.params);
+      case 'answerApproval':
+        if (!engine) fail('IOS_CHAT_APPROVAL_STALE');
+        return engine.answerApproval(value.params);
       case 'cancel': return engine ? engine.cancel() : STOPPED;
       case 'stop': {
         if (!engine) return STOPPED;
@@ -116,7 +127,7 @@ export function startChatMailbox(reportPath, { pollMs = 80 } = {}) {
       const stat = await lstat(directory);
       if (!stat.isDirectory() || stat.isSymbolicLink() || (stat.mode & 0o077) !== 0) return;
       // Parents like iOS /var alias to /private/var; only the mailbox leaf must be real.
-        if (await realpath(directory) !== join(await realpath(dirname(directory)), basename(directory))) return;
+      if (await realpath(directory) !== join(await realpath(dirname(directory)), basename(directory))) return;
       entries = await readdir(directory);
     } catch { return; }
     const now = Date.now();

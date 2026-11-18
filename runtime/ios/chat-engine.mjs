@@ -7,9 +7,12 @@ import { boot } from '@deepseek-ai/dsh-app-boot';
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import { SessionId } from '@deepseek-ai/dsh-session';
 import { SessionPersistence } from '@deepseek-ai/dsh-session-persistence';
+import { createChatApproval } from './chat-approval.mjs';
+import { CHAT_CHANNEL_PROVIDER, createChatChannelAdapter, guardChatChannelStream, normalizeChatChannel } from './chat-model-channel.mjs';
+import { registerChatWorkspaceTools } from './chat-workspace-tools.mjs';
 import {
   CHAT_MAX_TOKENS, CHAT_MODEL, CHAT_PROVIDER,
-  chatFailureCode, chatStream, createDeepSeekAdapter,
+  chatFailureCode, createDeepSeekAdapter,
 } from './chat-deepseek-provider.mjs';
 
 const UUID_V4 = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
@@ -20,6 +23,7 @@ const roots = [
   ['tools', 'dsh-tools'], ['tool-executor-native', 'dsh-tool-executor-native'], ['llm', 'dsh-llm'],
   ['agent', 'dsh-agent'], ['agent-loop', 'dsh-agent-loop', { agents: [] }],
   ['session-checkpoint-policy', 'dsh-session-checkpoint-policy'],
+  ['user-approval', 'dsh-user-approval', { policy: 'ask' }],
 ];
 const MAX_PROMPT_BYTES = 8192;
 const MAX_TEXT_BYTES = 12 * 1024;
@@ -101,10 +105,15 @@ async function durableSessionId(directory, work) {
   return id;
 }
 
-export async function createChatEngine({ directory, apiKey } = {}) {
+export async function createChatEngine({ directory, apiKey, channel } = {}) {
   if (typeof apiKey !== 'string' || !apiKey.length || apiKey.length > 1024 || /[^!-~]/.test(apiKey)) {
     throw chatError('IOS_CHAT_KEY_INVALID');
   }
+  const route = channel === undefined ? null : normalizeChatChannel(channel);
+  if (route && [route.baseUrl, route.modelId].some(value => value.includes(apiKey))) throw chatError('IOS_CHAT_CHANNEL_INVALID');
+  const provider = route ? CHAT_CHANNEL_PROVIDER : CHAT_PROVIDER;
+  const model = route?.modelId ?? CHAT_MODEL;
+  const approval = createChatApproval();
   let key = apiKey;
   apiKey = undefined;
   let work;
@@ -140,6 +149,12 @@ export async function createChatEngine({ directory, apiKey } = {}) {
     } else if (event.type === 'assistant/message') {
       clearDraft();
       remember('assistant', event.data.message);
+    } else if (event.type === 'tool/result') {
+      const content = event.data.message.content.filter(block => block.type === 'text').map(block => block.text).join('');
+      if (content) {
+        history.push({ role: 'tool', text: clip(redact(content), MAX_TEXT_BYTES) });
+        if (history.length > MAX_MESSAGES) history.shift();
+      }
     } else if (observeTurnErrors && event.type === 'turn/end' && event.data.reason.kind === 'error') {
       errorCode = chatFailureCode(event.data.reason.error.code);
     }
@@ -148,7 +163,8 @@ export async function createChatEngine({ directory, apiKey } = {}) {
     const draft = clip(redact([...draftParts.entries()].sort(([a], [b]) => a - b)
       .map(([, part]) => part).join('')), MAX_TEXT_BYTES);
     const result = { state: active || cancellation ? 'running' : 'ready', messages: [], draft,
-      errorCode: storageFault ? 'IOS_CHAT_STORAGE_FAILED' : override ?? errorCode };
+      errorCode: storageFault ? 'IOS_CHAT_STORAGE_FAILED' : override ?? errorCode,
+      approval: approval.snapshot() };
     let remaining = SNAPSHOT_BYTES - jsonBytes(result) - 1;
     for (let i = history.length - 1; i >= 0; i--) {
       const message = history[i];
@@ -165,6 +181,7 @@ export async function createChatEngine({ directory, apiKey } = {}) {
   }
   async function cleanup() {
     let failed = false;
+    approval.close();
     key = undefined;
     try { await handle?.dispose(); } catch { failed = true; }
     try { await ctx?.fiber.dispose(); } catch { failed = true; }
@@ -194,13 +211,34 @@ export async function createChatEngine({ directory, apiKey } = {}) {
     if (!(store instanceof SessionPersistence)) { failure = 'IOS_CHAT_STORAGE_FAILED'; throw chatError(failure); }
     if (ctx.fiber.state !== 2 || rows.some(({ id }) => tree?.resolve(id)?.fiber?.state !== 2)) throw chatError(failure);
 
-    const adapter = createDeepSeekAdapter(directory, () => key);
-    ctx.llm.registerAdapter([CHAT_PROVIDER], adapter);
+    const workspace = join(directory, 'Workspace');
+    await mkdir(workspace, { mode: 0o700 }).catch((error) => { if (error.code !== 'EEXIST') throw error; });
+    const actions = new WeakMap();
+    ctx.on('approval/request', (request, next) => {
+      const action = actions.get(request.agent);
+      if (request.agent.session.id !== sessionId || !action || request.toolName !== action.toolName) return next();
+      return approval.ask(action, request.signal);
+    });
+    await registerChatWorkspaceTools(ctx, {
+      directory: workspace,
+      containsSecret: text => !!key && typeof text === 'string' && text.includes(key),
+      approve: async (action, signal, execution) => {
+        const agent = execution?.agent;
+        if (!agent || agent.session.id !== sessionId || actions.has(agent)) return false;
+        actions.set(agent, action);
+        try {
+          return await ctx.approval.request({ agent, signal, toolName: action.toolName,
+            callId: execution.callId, reason: 'Create a new file in this app’s workspace' }) === 'allowed-once';
+        } finally { actions.delete(agent); }
+      },
+    });
+    const adapter = route ? createChatChannelAdapter(directory, route, () => key) : createDeepSeekAdapter(directory, () => key);
+    ctx.llm.registerAdapter([provider], adapter);
     ctx.on('llm/stream', (options, next) => {
-      if (options.sessionId !== sessionId || options.provider !== CHAT_PROVIDER || options.model !== CHAT_MODEL || !key) {
+      if (options.sessionId !== sessionId || options.provider !== provider || options.model !== model || !key) {
         throw chatError('IOS_CHAT_MODEL_FAILED');
       }
-      return chatStream(next, key, options.signal);
+      return guardChatChannelStream(next, key, options.signal, options.tools);
     }, { prepend: true });
     ctx.on('session/event', (session, event) => { if (session.id === sessionId) project(event); });
     ctx.on('agent/error', ({ agent, error }) => {
@@ -220,12 +258,15 @@ export async function createChatEngine({ directory, apiKey } = {}) {
     });
 
     failure = 'IOS_CHAT_STORAGE_FAILED';
-    const agentOptions = { provider: CHAT_PROVIDER, model: CHAT_MODEL, maxTokens: CHAT_MAX_TOKENS };
+    const agentOptions = { provider, model, maxTokens: CHAT_MAX_TOKENS };
     if (await store.stat(sessionId) === undefined) {
       if ((await store.list()).length !== 0) throw chatError(failure);
       handle = await ctx.agents.create({ sessionId, meta: { cwd: directory }, agentOptions });
     } else {
       handle = await ctx.agents.resume({ resumeSessionId: sessionId, agentOptions });
+      // A historical last-used route takes precedence over constructor defaults.
+      // The channel explicitly chosen for this run owns subsequent model calls.
+      handle.agent.model.select({ provider, model });
     }
     await checkpoint();
     const reader = await store.open(sessionId, 'read');
@@ -250,6 +291,11 @@ export async function createChatEngine({ directory, apiKey } = {}) {
   }
   return Object.freeze({
     async snapshot() { assertOpen(); return view(); },
+    async answerApproval(params) {
+      assertOpen();
+      if (!approval.answer(params)) throw chatError('IOS_CHAT_APPROVAL_STALE');
+      return view();
+    },
     async send({ text } = {}) {
       assertOpen();
       if (storageFault) return view();

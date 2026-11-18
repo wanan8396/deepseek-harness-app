@@ -120,10 +120,39 @@ final class RunnerTests: XCTestCase {
     XCTAssertFalse(String(describing: failed).contains(apiKey))
     XCTAssertEqual(try request(mailbox, .stop)["state"] as? String, "stopped")
 
+    // Same on-device engine, now using a custom HTTPS Chat Completions route.
+    let custom: [String: Any] = ["apiKey": apiKey, "protocol": "openai-chat",
+      "baseUrl": "https://models.example/v1", "modelId": "fixture-model"]
+    XCTAssertEqual(try request(mailbox, .start, params: custom)["state"] as? String, "ready")
+    _ = try request(mailbox, .send, "chat-ci-workspace-allow")
+    let waiting = try waitForChat(mailbox) { $0["approval"] is [String: Any] }
+    let approval = try XCTUnwrap(waiting["approval"] as? [String: Any])
+    let file = directory.appendingPathComponent("ChatData/Workspace/allowed.txt")
+    let expectedText = "fixture 雪🧪\nsecond line\n"
+    XCTAssertEqual(approval["toolName"] as? String, "workspace_create_text")
+    XCTAssertEqual(approval["path"] as? String, "allowed.txt")
+    XCTAssertEqual(approval["preview"] as? String, expectedText)
+    XCTAssertEqual(approval["byteLength"] as? Int, expectedText.utf8.count)
+    XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
+    let id = try XCTUnwrap(approval["id"] as? String)
+    _ = try request(mailbox, .answerApproval, params: ["id": id, "allowed": true])
+    let toolTurn = try waitForChat(mailbox) { $0["state"] as? String == "ready" }
+    XCTAssertTrue(toolTurn["errorCode"] is NSNull)
+    XCTAssertEqual(try String(contentsOf: file, encoding: .utf8), expectedText)
+    let toolMessages = try XCTUnwrap(toolTurn["messages"] as? [[String: String]])
+    XCTAssertTrue(toolMessages.contains { $0["role"] == "assistant" && $0["text"] == "ci-workspace-tools-complete" })
+    let decoded = try toolMessages.filter { $0["role"] == "tool" }.compactMap { message -> [String: Any]? in
+      guard let text = message["text"] else { return nil }
+      return try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any]
+    }
+    XCTAssertTrue(decoded.contains { $0["path"] as? String == "allowed.txt" && $0["text"] as? String == expectedText })
+    XCTAssertEqual(try request(mailbox, .stop)["state"] as? String, "stopped")
+
     let chatEvidence: [String: Any] = [
       "modelTransport": "synthetic-https-response", "bridge": "swift-private-file-mailbox",
       "officialAdapterVerified": true, "inProcessChatVerified": true, "cancellationVerified": true,
       "closeReopenVerified": true, "authFailureVerified": true, "liveModelVerified": false,
+      "customCompletionsVerified": true, "approvedWorkspaceToolCallVerified": true,
     ]
     let evidence = XCTAttachment(data: try JSONSerialization.data(withJSONObject: chatEvidence),
       uniformTypeIdentifier: "public.json")
@@ -174,6 +203,18 @@ final class RunnerTests: XCTestCase {
     let done = expectation(description: "chat mailbox reply")
     var response: Result<[String: Any], IosChatMailbox.Failure>?
     mailbox.request(method, value: value) { reply in
+      response = reply
+      done.fulfill()
+    }
+    wait(for: [done], timeout: 30)
+    return try XCTUnwrap(response).get()
+  }
+
+  private func request(_ mailbox: IosChatMailbox, _ method: IosChatMailbox.Method,
+                       params: [String: Any]) throws -> [String: Any] {
+    let done = expectation(description: "chat mailbox structured reply")
+    var response: Result<[String: Any], IosChatMailbox.Failure>?
+    mailbox.request(method, params: params) { reply in
       response = reply
       done.fulfill()
     }
