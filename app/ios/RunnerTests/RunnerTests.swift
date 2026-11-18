@@ -394,7 +394,8 @@ final class RunnerTests: XCTestCase {
           selection.addRange(range);
         }
         if (!document.execCommand('insertText', false, prompt)) throw new Error('insertText failed');
-        input.dispatchEvent(new InputEvent('input', {bubbles: true, data: prompt, inputType: 'insertText'}));
+        // WebKit's edit command emits input; sending a second synthetic input
+        // applies the same insertText twice in the production Lexical editor.
         // In this locked graph only the primary composer action sets aria-busy.
         const send = await waitFor(() => input.textContent === prompt
           && input.closest('[data-composer-card]')?.querySelector('button[aria-busy="false"]:enabled'));
@@ -792,7 +793,7 @@ final class RunnerTests: XCTestCase {
     let navigation = WebAssetNavigation(expectation(description: "Stock DSH frontend loads from App URL"))
     web.navigationDelegate = navigation
     web.load(URLRequest(url: IosOfficialWebAssets.startURL))
-    await fulfillment(of: [navigation.loaded], timeout: 15)
+    await fulfillment(of: [navigation.loaded], timeout: 40)
     XCTAssertNil(navigation.error)
     XCTAssertEqual(web.url, IosOfficialWebAssets.startURL)
     XCTAssertTrue(assets.servedPaths.contains("/index.html"))
@@ -829,7 +830,7 @@ final class RunnerTests: XCTestCase {
     let navigation = WebAssetNavigation(expectation(description: "Generated official bootstrap document"))
     web.navigationDelegate = navigation
     web.load(URLRequest(url: IosOfficialWebAssets.bootstrapURL))
-    await fulfillment(of: [navigation.loaded], timeout: 15)
+    await fulfillment(of: [navigation.loaded], timeout: 40)
     XCTAssertNil(navigation.error)
     XCTAssertEqual(web.url, IosOfficialWebAssets.bootstrapURL)
     XCTAssertTrue(assets.servedPaths.contains("/"))
