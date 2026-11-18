@@ -15,7 +15,7 @@ const ROWS = [
   ['agentLoop', '@deepseek-ai/dsh-agent-loop', { agents: [] }],
   ['userApproval', '@deepseek-ai/dsh-user-approval', { policy: 'ask' }],
   ['agentDefaultModel', '@deepseek-ai/dsh-agent-default-model'],
-  ['attachments', '@deepseek-ai/dsh-attachment'],
+  ['attachments', '@deepseek-ai/dsh-attachment-local'],
   ['fs', '@deepseek-ai/dsh-fs-local'],
   ['workspace', '@deepseek-ai/dsh-workspace'],
   ['fileUploads', '@deepseek-ai/dsh-client-file-upload'],
@@ -50,8 +50,9 @@ export async function createOfficialHost({ seed, stateDirectory }) {
   await writeFile(join(work, 'package.json'), '{}\n', { flag: 'wx' });
   const rows = ROWS.map(([id, pkg, config]) => {
     const row = { id, name: entry(pkg) };
-    if (id === 'credentials') {
+    if (id === 'credentials' || id === 'attachments') {
       row.config = { path: join(state, '.credentials.yaml'), dshHome: state, watch: false };
+      if (id === 'attachments') row.config = { dshHome: state };
     } else if (id === 'fs' || id === 'workspace') {
       row.config = { root: state };
     } else if (id === 'sessionController') {
