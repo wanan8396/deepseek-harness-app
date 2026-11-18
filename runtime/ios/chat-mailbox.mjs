@@ -1,6 +1,6 @@
 import { constants } from 'node:fs';
 import { lstat, open, readdir, realpath, unlink, writeFile, link } from 'node:fs/promises';
-import { dirname, isAbsolute, join } from 'node:path';
+import { basename, dirname, isAbsolute, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { createChatEngine } from './chat-engine.mjs';
 
@@ -102,8 +102,9 @@ export function startChatMailbox(reportPath, { createEngine = createChatEngine, 
       case 'cancel': return engine ? engine.cancel() : STOPPED;
       case 'stop': {
         if (!engine) return STOPPED;
-        await engine.stop();
-        engine = undefined;
+        const current = engine;
+        try { await current.stop(); }
+        finally { engine = undefined; }
         return STOPPED;
       }
     }
@@ -115,7 +116,7 @@ export function startChatMailbox(reportPath, { createEngine = createChatEngine, 
       const stat = await lstat(directory);
       if (!stat.isDirectory() || stat.isSymbolicLink() || (stat.mode & 0o077) !== 0) return;
       // Parents like iOS /var alias to /private/var; only the mailbox leaf must be real.
-      if (await realpath(directory) !== join(await realpath(dirname(directory)), directory.slice(dirname(directory).length + 1))) return;
+      if (await realpath(directory) !== join(await realpath(dirname(directory)), basename(directory))) return;
       entries = await readdir(directory);
     } catch { return; }
     const now = Date.now();

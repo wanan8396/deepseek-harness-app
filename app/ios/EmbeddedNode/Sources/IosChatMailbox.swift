@@ -211,17 +211,15 @@ public final class IosChatMailbox {
         worker.asyncAfter(deadline: .now() + .milliseconds(80)) { self.poll(id) }
         return
       } else {
-        // If Node already opened/consumed this request, it still owns the
-        // operation. It serializes subsequent work and expires orphan replies.
-        remove(file.requestName)
-        remove(file.responseName)
+        // If Node already consumed this request, it still owns the operation.
+        // It serializes subsequent work and expires orphan replies.
         reply = .failure(Failure("IOS_CHAT_TIMEOUT"))
       }
     } catch {
-      remove(file.requestName)
-      remove(file.responseName)
       reply = .failure(Failure("IOS_CHAT_PROTOCOL_ERROR"))
     }
+    remove(file.requestName)
+    remove(file.responseName)
     active = nil
     complete(file.completion, with: reply)
     pump()
@@ -232,10 +230,7 @@ public final class IosChatMailbox {
     if fd < 0, errno == ENOENT { return nil }
     guard fd >= 0 else { throw Failure("IOS_CHAT_PROTOCOL_ERROR") }
     let input = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
-    defer {
-      try? input.close()
-      remove(file.responseName)
-    }
+    defer { try? input.close() }
     var attributes = stat()
     guard fstat(fd, &attributes) == 0,
           attributes.st_mode & mode_t(S_IFMT) == mode_t(S_IFREG),

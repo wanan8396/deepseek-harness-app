@@ -47,7 +47,7 @@ export function chatFailureCode(code) {
   switch (code) {
     case 'AUTH': case 'MISSING_CREDENTIAL': case 'INVALID_CREDENTIAL': case 'IOS_CHAT_AUTH_FAILED':
       return 'IOS_CHAT_AUTH_FAILED';
-    case 'QUOTA': case 'RATE_LIMIT': case 'IOS_CHAT_RATE_LIMITED':
+    case 'QUOTA': case 'ACCOUNT_QUOTA': case 'RATE_LIMIT': case 'IOS_CHAT_RATE_LIMITED':
       return 'IOS_CHAT_RATE_LIMITED';
     case 'TIMEOUT': case 'IOS_CHAT_TIMEOUT':
       return 'IOS_CHAT_TIMEOUT';

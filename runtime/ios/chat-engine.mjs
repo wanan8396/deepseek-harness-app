@@ -61,7 +61,7 @@ function buildRows(directory) {
 }
 
 export async function createChatEngine({ directory, apiKey, adapterFactory } = {}) {
-  if (typeof apiKey !== 'string' || apiKey.length > 1024 || !/^[!-~]+$/.test(apiKey)) {
+  if (typeof apiKey !== 'string' || !apiKey.length || apiKey.length > 1024 || /[^!-~]/.test(apiKey)) {
     throw chatError('IOS_CHAT_KEY_INVALID');
   }
   let key = apiKey;

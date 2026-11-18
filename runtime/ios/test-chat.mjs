@@ -14,7 +14,8 @@ const mailbox = `${report}.chat`;
 const manifest = JSON.parse(await readFile(join(bundle, 'distribution-manifest.json'), 'utf8'));
 assert.equal(manifest.distribution, 'ios-local-text-chat');
 assert.ok(manifest.entryPackages.includes('@deepseek-ai/dsh-llm-deepseek'));
-assert.ok(!manifest.files.some(({ path }) => /chat-ci|fixture|test-chat/.test(path)));
+assert.deepEqual(manifest.files.map(({ path }) => path).filter((path) => !path.startsWith('node_modules/')).sort(),
+  ['chat-deepseek-provider.mjs', 'chat-engine.mjs', 'chat-mailbox.mjs', 'sqlite-session-persistence.mjs']);
 await mkdir(mailbox, { mode: 0o700 });
 fixture.installFetchFixture();
 const { startChatMailbox } = await fixture.bundled(bundle, 'chat-mailbox.mjs');

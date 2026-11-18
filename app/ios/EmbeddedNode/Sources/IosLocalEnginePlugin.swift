@@ -7,7 +7,8 @@ import UIKit
 public final class IosLocalEnginePlugin: NSObject, FlutterPlugin {
   // Flutter can register again with another engine, but Node is process-wide.
   private static let shared = IosLocalEnginePlugin()
-  private lazy var runtimeDirectory = Self.prepareRuntimeDirectory()
+  // Purge transient files from previous processes before admitting either boot path.
+  private let runtimeDirectory = IosLocalEnginePlugin.prepareRuntimeDirectory()
   private var chatMailbox: IosChatMailbox?
   private var state = "idle"
   private var reason: String?
@@ -19,10 +20,8 @@ public final class IosLocalEnginePlugin: NSObject, FlutterPlugin {
   private override init() { super.init() }
 
   public static func register(with registrar: FlutterPluginRegistrar) {
-    let plugin = shared
-    _ = plugin.runtimeDirectory // Clean old transient inputs once, before any Node boot.
     let channel = FlutterMethodChannel(name: "dsh/ios-local", binaryMessenger: registrar.messenger())
-    registrar.addMethodCallDelegate(plugin, channel: channel)
+    registrar.addMethodCallDelegate(shared, channel: channel)
   }
 
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
