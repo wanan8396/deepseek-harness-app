@@ -23,7 +23,8 @@ DEFAULT_CHAT_OUTPUT = DEFAULT_OUTPUT.with_name('dsh-chat')
 DEFAULT_OFFICIAL_HOST_OUTPUT = ROOT / 'app/ios/RunnerTests/dsh-official-host-ci'
 OFFICIAL_HOST_ENTRY_PACKAGES = (
     '@deepseek-ai/dsh-agent-default-model', '@deepseek-ai/dsh-api-gateway',
-    '@deepseek-ai/dsh-api-remote-access', '@deepseek-ai/dsh-api-session-controller',
+    '@deepseek-ai/dsh-api-remote-access', '@deepseek-ai/dsh-api-remotes',
+    '@deepseek-ai/dsh-api-session-controller', '@deepseek-ai/dsh-api-workspace-controller',
     '@deepseek-ai/dsh-attachment-local', '@deepseek-ai/dsh-client-connection',
     '@deepseek-ai/dsh-client-file-upload', '@deepseek-ai/dsh-commands',
     '@deepseek-ai/dsh-credentials-local', '@deepseek-ai/dsh-fs-local',
@@ -36,7 +37,8 @@ OFFICIAL_HOST_REVIEWED_PACKAGES = frozenset(OFFICIAL_HOST_ENTRY_PACKAGES) | froz
     '@deepseek-ai/dsh-agent-preset-registry', '@deepseek-ai/dsh-chunked-list',
     '@deepseek-ai/dsh-cmdline', '@deepseek-ai/dsh-compaction', '@deepseek-ai/dsh-compaction-image-offload',
     '@deepseek-ai/dsh-config-editor', '@deepseek-ai/dsh-credentials', '@deepseek-ai/dsh-deque',
-    '@deepseek-ai/dsh-file-reference', '@deepseek-ai/dsh-hmr', '@deepseek-ai/dsh-http-proxy',
+    '@deepseek-ai/dsh-file-reference', '@deepseek-ai/dsh-hmr',
+    '@deepseek-ai/dsh-host-directory-picker', '@deepseek-ai/dsh-http-proxy',
     '@deepseek-ai/dsh-lazy-require', '@deepseek-ai/dsh-permission-presets', '@deepseek-ai/dsh-sandbox-policy',
     '@deepseek-ai/dsh-session-format', '@deepseek-ai/dsh-session-format-catalog',
     '@deepseek-ai/dsh-session-format-v0-to-v1', '@deepseek-ai/dsh-session-format-v1-to-v2',
@@ -178,7 +180,7 @@ def phase_entry_packages(phase: str) -> tuple[str, ...]:
         if phase == 'chat':
             return (*entries, CHAT_PROVIDER_PACKAGE)
         if phase == 'official-host-ci':
-            return (*entries, *OFFICIAL_HOST_ENTRY_PACKAGES)
+            return (*entries, CHAT_PROVIDER_PACKAGE, *OFFICIAL_HOST_ENTRY_PACKAGES)
         return entries
     raise ExportError('EXPORT_PHASE_INVALID')
 
@@ -347,7 +349,9 @@ def prepare(seed: Path, destination: Path, check: bool = False, phase: str = 'lo
         'chat': ('chat-engine.mjs', 'chat-deepseek-provider.mjs', 'chat-mailbox.mjs',
                  'chat-approval.mjs', 'chat-model-channel.mjs', 'chat-workspace-tools.mjs',
                  'sqlite-session-persistence.mjs'),
-        'official-host-ci': ('official-host.mjs', 'official-host-ci-mailbox.mjs', 'sqlite-session-persistence.mjs'),
+        'official-host-ci': ('official-host.mjs', 'official-host-ci-mailbox.mjs', 'sqlite-session-persistence.mjs',
+                             'core-fixture-model.mjs', 'official-app-services.mjs', 'chat-model-channel.mjs',
+                             'chat-deepseek-provider.mjs', 'chat-workspace-tools.mjs'),
     }[phase]
     own_files = [ROOT / 'runtime/ios' / name for name in own_names]
     for source in own_files:

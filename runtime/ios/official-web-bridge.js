@@ -40,34 +40,57 @@
     for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
     return new Response(bytes.byteLength ? bytes : null, { status: reply.status, headers: reply.headers ?? {} });
   };
-  let nextStreamId = 0;
-  // The first simulator carrier exercises read-only session streams. Its
-  // command route exists only in RunnerTests, not in the packaged App.
-  async function* openStream(endpoint, payload, signal, uplink) {
-    if (endpoint !== 'session/follow' || uplink !== undefined) throw new TypeError(name);
+  const openedStreams = new Set();
+  const readOnlyEndpoints = new Set(['$events', 'remoteAccess/follow', 'workspace/follow', 'session/control', 'session/follow']);
+  let retired = false;
+  // RunnerTests supports only the audited downlink streams. Generated Remote
+  // supplies an uplink iterable even for downlink-only descriptors; none of
+  // these contracts consume it. Their ClientStreamHandle closes the queue.
+  async function* openStream(endpoint, payload, signal) {
+    if (retired || !readOnlyEndpoints.has(endpoint)) throw new TypeError(name);
     signal?.throwIfAborted();
-    const id = `s${++nextStreamId}`;
+    const id = 's' + Array.from(crypto.getRandomValues(new Uint8Array(16)),
+      byte => byte.toString(16).padStart(2, '0')).join('');
     const command = async (type, extra = {}) => {
       const response = await fetchImpl('api/ios-ci/stream', {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ id, type, ...extra }),
       });
-      if (!response.ok) throw new Error(`IOS_WEB_STREAM_${type.toUpperCase()}_FAILED: ${response.status}`);
+      if (!response.ok) {
+        const failure = new Error(`IOS_WEB_STREAM_${type.toUpperCase()}_FAILED: ${response.status}`);
+        failure.dshRemoteStreamFailure = { kind: 'carrier' };
+        throw failure;
+      }
       return response.json();
     };
-    if ((await command('open', { endpoint, payload })).opened !== true) throw new TypeError(name);
+    const opening = command('open', { endpoint, payload });
+    let closed;
+    const close = () => closed ??= opening.then(() => command('close'), () => {}).finally(() => openedStreams.delete(close));
+    const abort = () => { void close().catch(() => {}); };
+    openedStreams.add(close);
+    signal?.addEventListener('abort', abort, { once: true });
+    if (signal?.aborted) abort();
     try {
+      if ((await opening).opened !== true) throw new TypeError(name);
       for (;;) {
+        if (retired) return;
         signal?.throwIfAborted();
         const item = await command('next');
+        if (retired) return;
         signal?.throwIfAborted();
+        if (item.idle === true) continue;
         if (item.done === true) return;
         if (item.done !== false || !Object.hasOwn(item, 'value')) throw new TypeError(name);
         yield item.value;
       }
     } finally {
-      if ((await command('close')).closed !== true) throw new TypeError(name);
+      signal?.removeEventListener('abort', abort);
+      await close().catch(() => {});
     }
   }
+  window.__iosOfficialBridgeClose = async () => {
+    retired = true;
+    await Promise.allSettled([...openedStreams].map(close => close()));
+  };
   window.__DSH_TRANSPORT__ = Object.freeze({ ownsHost: true, fetch: fetchImpl, openStream });
 })();

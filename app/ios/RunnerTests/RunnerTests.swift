@@ -16,6 +16,111 @@ private final class WebAssetNavigation: NSObject, WKNavigationDelegate {
   }
 }
 
+/// Simulator fixture only. Keep one private lane per active WebKit request so
+/// an idle stream pull cannot hold up another stream, a unary RPC, or close.
+@MainActor
+private final class OfficialHostCIMailbox {
+  private let directory: URL
+  private var inFlight = 0
+  private var inFlightFileCalls = 0
+  private var invalidatedGeneration: UInt64 = 0
+  private(set) var peakConcurrentCalls = 0
+  var allowBrowserSessionCreates = false
+
+  init(directory: URL) { self.directory = directory }
+
+  func invalidate(_ generation: UInt64) {
+    invalidatedGeneration = max(invalidatedGeneration, generation)
+  }
+
+  func checkHostFailure() throws {
+    let errorURL = directory.appendingPathComponent("official-host-ci-error")
+    if let failure = try? String(contentsOf: errorURL, encoding: .utf8) {
+      throw NSError(domain: "OfficialHostCI", code: 1, userInfo: [NSLocalizedDescriptionKey: failure])
+    }
+  }
+
+  func request(_ request: IosOfficialWebBridge.HTTPRequest, generation: UInt64) async throws -> IosOfficialWebBridge.Reply {
+    guard generation > invalidatedGeneration, inFlight < 16 else { throw URLError(.resourceUnavailable) }
+    guard request.method == "POST", let data = request.body,
+          let body = String(data: data, encoding: .utf8),
+          request.headers.contains(where: { header in
+            let mediaType = header.value.components(separatedBy: ";").first?.trimmingCharacters(in: .whitespaces)
+            return header.name.lowercased() == "content-type" && mediaType?.lowercased() == "application/json"
+          }), let frame = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+      throw URLError(.badServerResponse)
+    }
+    let deadline = ProcessInfo.processInfo.systemUptime + 40
+    let id = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+    let requestURL = directory.appendingPathComponent("official-call-\(id).json")
+    let replyURL = directory.appendingPathComponent("official-reply-\(id).json")
+    let files = FileManager.default
+    inFlight += 1
+    defer { inFlight -= 1 }
+    // The official shell restores its own blank Session on initial connect.
+    // Let the raw gate observe the originally empty Host and exactly its own
+    // two creates before releasing the genuine browser restoration request.
+    let isBrowserCreate = request.pathAndQuery == "/api/session/create"
+      && (frame["rpcId"] as? String)?.hasPrefix("ios-web-test-") != true
+    while isBrowserCreate && !allowBrowserSessionCreates {
+      try await waitForLane(generation, deadline: deadline)
+    }
+    let payload = try JSONSerialization.data(withJSONObject: ["path": request.pathAndQuery, "body": body])
+    guard payload.count <= 256 * 1024 else { throw URLError(.dataLengthExceedsMaximum) }
+    try checkLane(generation, deadline: deadline)
+    try payload.write(to: requestURL, options: .atomic)
+    inFlightFileCalls += 1
+    peakConcurrentCalls = max(peakConcurrentCalls, inFlightFileCalls)
+    defer {
+      try? files.removeItem(at: requestURL)
+      try? files.removeItem(at: replyURL)
+      inFlightFileCalls -= 1
+    }
+    while !files.fileExists(atPath: replyURL.path) {
+      try await waitForLane(generation, deadline: deadline)
+    }
+    try checkLane(generation, deadline: deadline)
+    // A JSON string may encode one byte as six escape characters.
+    let values = try replyURL.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey])
+    guard values.isRegularFile == true, values.isSymbolicLink == false,
+          let size = values.fileSize, size > 0, size <= 6 * 256 * 1024 + 64 else {
+      throw URLError(.badServerResponse)
+    }
+    let reply = try Data(contentsOf: replyURL)
+    guard reply.count == size,
+          let result = try JSONSerialization.jsonObject(with: reply) as? [String: Any],
+          let status = result["status"] as? Int, (200...599).contains(status),
+          let text = result["body"] as? String, text.utf8.count <= 256 * 1024 else {
+      throw URLError(.badServerResponse)
+    }
+    return .response(.init(status: status,
+      headers: [.init(name: "content-type", value: "application/json")], body: Data(text.utf8)))
+  }
+
+  private func checkLane(_ generation: UInt64, deadline: TimeInterval) throws {
+    try checkHostFailure()
+    try Task.checkCancellation()
+    guard generation > invalidatedGeneration else { throw CancellationError() }
+    guard ProcessInfo.processInfo.systemUptime < deadline else { throw URLError(.timedOut) }
+  }
+
+  private func waitForLane(_ generation: UInt64, deadline: TimeInterval) async throws {
+    try checkLane(generation, deadline: deadline)
+    try await Task.sleep(for: .milliseconds(25))
+  }
+
+  func removeSettledFiles() throws {
+    // Call only after Node acknowledges stop; this also cleans any late reply
+    // written after a cancelled or timed-out lane had already exited.
+    let files = FileManager.default
+    let names = try files.contentsOfDirectory(atPath: directory.path)
+    for name in names where name.range(of: #"^official-(call-|reply-)?[0-9a-f]{32}\.(json|tmp)$"#,
+                                      options: .regularExpression) != nil {
+      try files.removeItem(at: directory.appendingPathComponent(name))
+    }
+  }
+}
+
 final class RunnerTests: XCTestCase {
   // This runs node_start inside the actual iOS Simulator application process.
   // It deliberately never treats a version/capability probe as a DSH boot.
@@ -37,9 +142,10 @@ final class RunnerTests: XCTestCase {
     try hostBundle.path.write(to: directory.appendingPathComponent("official-host-path.txt"), atomically: true, encoding: .utf8)
     let output = directory.appendingPathComponent(UUID().uuidString.lowercased() + ".json")
     let mailbox = try IosChatMailbox(reportURL: output)
-    // Start the real page before Node's cold initialization. On a loaded CI
-    // runner WebKit's first GPU process took over 13 seconds to launch.
-    let bridge = try await startOfficialWebSessionPage(directory)
+    let officialMailbox = OfficialHostCIMailbox(directory: directory)
+    // Start the real preview page before Node's cold initialization. On a
+    // loaded CI runner WebKit's first GPU process took over 13 seconds to launch.
+    let bridge = try await startOfficialWebSessionPage(officialMailbox)
     defer { bridge.invalidate() }
     XCTAssertTrue(DshEmbeddedNode.startProbe(atPath: script, reportPath: output.path) { code in
       XCTFail("Node runtime exited unexpectedly: \(code)")
@@ -98,41 +204,49 @@ final class RunnerTests: XCTestCase {
     // The production Swift mailbox and actual AgentLoop/DeepSeek adapter run
     // in this same process. Only the outbound fetch response is a test fixture.
     let apiKey = "ci-test-only-not-a-credential"
-    XCTAssertEqual(try request(mailbox, .snapshot)["state"] as? String, "stopped")
-    XCTAssertEqual(try request(mailbox, .start, apiKey)["state"] as? String, "ready")
-    XCTAssertEqual(try request(mailbox, .send, "chat-ci-first")["state"] as? String, "running")
-    let streaming = try waitForChat(mailbox) { $0["draft"] as? String == "ci-provider-stream-" }
+    let initialChat = try await request(mailbox, .snapshot)
+    XCTAssertEqual(initialChat["state"] as? String, "stopped")
+    let startedChat = try await request(mailbox, .start, apiKey)
+    XCTAssertEqual(startedChat["state"] as? String, "ready")
+    let firstSend = try await request(mailbox, .send, "chat-ci-first")
+    XCTAssertEqual(firstSend["state"] as? String, "running")
+    let streaming = try await waitForChat(mailbox) { $0["draft"] as? String == "ci-provider-stream-" }
     XCTAssertEqual(streaming["state"] as? String, "running")
-    let settled = try waitForChat(mailbox) { $0["state"] as? String == "ready" }
+    let settled = try await waitForChat(mailbox) { $0["state"] as? String == "ready" }
     let history = [["role": "user", "text": "chat-ci-first"],
       ["role": "assistant", "text": "ci-provider-stream-complete"]]
     XCTAssertEqual(settled["messages"] as? [[String: String]], history)
     XCTAssertTrue(settled["errorCode"] is NSNull)
-    XCTAssertEqual(try request(mailbox, .stop)["state"] as? String, "stopped")
-    XCTAssertEqual(try request(mailbox, .start, apiKey)["messages"] as? [[String: String]], history)
-    XCTAssertEqual(try request(mailbox, .send, "chat-ci-resumed")["state"] as? String, "running")
-    let resumed = try waitForChat(mailbox) { $0["state"] as? String == "ready" }
+    let firstStop = try await request(mailbox, .stop)
+    XCTAssertEqual(firstStop["state"] as? String, "stopped")
+    let reopenedChat = try await request(mailbox, .start, apiKey)
+    XCTAssertEqual(reopenedChat["messages"] as? [[String: String]], history)
+    let resumedSend = try await request(mailbox, .send, "chat-ci-resumed")
+    XCTAssertEqual(resumedSend["state"] as? String, "running")
+    let resumed = try await waitForChat(mailbox) { $0["state"] as? String == "ready" }
     XCTAssertEqual(resumed["messages"] as? [[String: String]], history + [
       ["role": "user", "text": "chat-ci-resumed"],
       ["role": "assistant", "text": "ci-provider-stream-complete"],
     ])
-    _ = try request(mailbox, .send, "chat-ci-cancel")
-    _ = try waitForChat(mailbox) { $0["draft"] as? String == "ci-provider-stream-" }
-    let cancelled = try request(mailbox, .cancel)
+    _ = try await request(mailbox, .send, "chat-ci-cancel")
+    _ = try await waitForChat(mailbox) { $0["draft"] as? String == "ci-provider-stream-" }
+    let cancelled = try await request(mailbox, .cancel)
     XCTAssertEqual(cancelled["state"] as? String, "ready")
     XCTAssertEqual(cancelled["draft"] as? String, "")
-    _ = try request(mailbox, .send, "chat-ci-auth-error")
-    let failed = try waitForChat(mailbox) { $0["state"] as? String == "ready" }
+    _ = try await request(mailbox, .send, "chat-ci-auth-error")
+    let failed = try await waitForChat(mailbox) { $0["state"] as? String == "ready" }
     XCTAssertEqual(failed["errorCode"] as? String, "IOS_CHAT_AUTH_FAILED")
     XCTAssertFalse(String(describing: failed).contains(apiKey))
-    XCTAssertEqual(try request(mailbox, .stop)["state"] as? String, "stopped")
+    let adapterStop = try await request(mailbox, .stop)
+    XCTAssertEqual(adapterStop["state"] as? String, "stopped")
 
     // Same on-device engine, now using a custom HTTPS Chat Completions route.
     let custom: [String: Any] = ["apiKey": apiKey, "protocol": "openai-chat",
       "baseUrl": "https://models.example/v1", "modelId": "fixture-model"]
-    XCTAssertEqual(try request(mailbox, .start, params: custom)["state"] as? String, "ready")
-    _ = try request(mailbox, .send, "chat-ci-workspace-allow")
-    let waiting = try waitForChat(mailbox) { $0["approval"] is [String: Any] }
+    let customChat = try await request(mailbox, .start, params: custom)
+    XCTAssertEqual(customChat["state"] as? String, "ready")
+    _ = try await request(mailbox, .send, "chat-ci-workspace-allow")
+    let waiting = try await waitForChat(mailbox) { $0["approval"] is [String: Any] }
     let approval = try XCTUnwrap(waiting["approval"] as? [String: Any])
     let file = directory.appendingPathComponent("ChatData/Workspace/allowed.txt")
     let expectedText = "fixture 雪🧪\nsecond line\n"
@@ -142,8 +256,8 @@ final class RunnerTests: XCTestCase {
     XCTAssertEqual(approval["byteLength"] as? Int, expectedText.utf8.count)
     XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
     let id = try XCTUnwrap(approval["id"] as? String)
-    _ = try request(mailbox, .answerApproval, params: ["id": id, "allowed": true])
-    let toolTurn = try waitForChat(mailbox, seconds: 25) { $0["state"] as? String == "ready" }
+    _ = try await request(mailbox, .answerApproval, params: ["id": id, "allowed": true])
+    let toolTurn = try await waitForChat(mailbox, seconds: 25) { $0["state"] as? String == "ready" }
     XCTAssertTrue(toolTurn["errorCode"] is NSNull, "Tool turn error: \(toolTurn["errorCode"] ?? "missing")")
     XCTAssertEqual(try String(contentsOf: file, encoding: .utf8), expectedText, "Approved workspace file differs")
     let toolMessages = try XCTUnwrap(toolTurn["messages"] as? [[String: String]])
@@ -154,7 +268,8 @@ final class RunnerTests: XCTestCase {
       return try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any]
     }
     XCTAssertTrue(decoded.contains { $0["path"] as? String == "allowed.txt" && $0["text"] as? String == expectedText })
-    XCTAssertEqual(try request(mailbox, .stop)["state"] as? String, "stopped")
+    let customStop = try await request(mailbox, .stop)
+    XCTAssertEqual(customStop["state"] as? String, "stopped")
 
     let chatEvidence: [String: Any] = [
       "modelTransport": "synthetic-https-response", "bridge": "swift-private-file-mailbox",
@@ -168,45 +283,35 @@ final class RunnerTests: XCTestCase {
     evidence.lifetime = .keepAlways
     add(evidence)
 
-    try await verifyOfficialWebSessionRPC(directory, bridge: bridge)
+    do {
+      try await verifyOfficialWebSessionRPC(directory, bridge: bridge, mailbox: officialMailbox)
+    } catch {
+      // A failing UI gate must not leave active stream pulls against a directory
+      // that the outer test is about to remove.
+      try? await stopOfficialWebSession(directory, bridge: bridge, mailbox: officialMailbox)
+      throw error
+    }
   }
 
   @MainActor
-  private func startOfficialWebSessionPage(_ directory: URL) async throws -> IosOfficialWebBridge {
-    let requestURL = directory.appendingPathComponent("official-rpc-request.json")
-    let replyURL = directory.appendingPathComponent("official-rpc-response.json")
-    let errorURL = directory.appendingPathComponent("official-host-ci-error")
-    let script = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "official-web-bridge", withExtension: "js"))
-    let assets = IosOfficialWebAssets()
-    var busy = false
+  private func startOfficialWebSessionPage(_ mailbox: OfficialHostCIMailbox) async throws -> IosOfficialWebBridge {
+    let bundle = Bundle(for: Self.self)
+    let preview = bundle.bundleURL.appendingPathComponent("dsh-web-shell-preview", isDirectory: true)
+    let script = try XCTUnwrap(bundle.url(forResource: "official-web-bridge", withExtension: "js"))
+    let assets = try IosOfficialWebAssets(previewDirectory: preview)
+    let diagnostics = """
+      globalThis.__iosOfficialErrors = [];
+      addEventListener('error', event => globalThis.__iosOfficialErrors.push(String(event.message || event.target?.src || 'resource-error')), true);
+      addEventListener('unhandledrejection', event => globalThis.__iosOfficialErrors.push(String(event.reason)));
+      addEventListener('securitypolicyviolation', event => globalThis.__iosOfficialErrors.push(event.violatedDirective + ': ' + event.blockedURI));
+      """
     let bridge = IosOfficialWebBridge(assets: assets,
-      documentStartScript: try String(contentsOf: script, encoding: .utf8), handler: { operation, _ in
-      guard !busy else { throw URLError(.resourceUnavailable) }
-      busy = true
-      defer { busy = false }
-      switch operation {
-      case .request(let request):
-        let body = try XCTUnwrap(request.body.flatMap { String(data: $0, encoding: .utf8) })
-        try JSONSerialization.data(withJSONObject: ["path": request.pathAndQuery, "body": body])
-          .write(to: requestURL, options: .atomic)
-        let deadline = ProcessInfo.processInfo.systemUptime + 8
-        while ProcessInfo.processInfo.systemUptime < deadline {
-          if let failure = try? String(contentsOf: errorURL, encoding: .utf8) {
-            throw NSError(domain: "OfficialHostCI", code: 1, userInfo: [NSLocalizedDescriptionKey: failure])
-          }
-          if let data = try? Data(contentsOf: replyURL) {
-            try FileManager.default.removeItem(at: replyURL)
-            let result = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-            let status = try XCTUnwrap(result["status"] as? Int)
-            let body = try XCTUnwrap(result["body"] as? String)
-            return .response(.init(status: status,
-              headers: [.init(name: "content-type", value: "application/json")], body: Data(body.utf8)))
-          }
-          try await Task.sleep(for: .milliseconds(25))
+      documentStartScript: diagnostics + "\n" + (try String(contentsOf: script, encoding: .utf8)),
+      handler: { operation, generation in
+        switch operation {
+        case .request(let request): return try await mailbox.request(request, generation: generation)
         }
-        throw URLError(.timedOut)
-      }
-    })
+      }, onInvalidate: { mailbox.invalidate($0) })
     bridge.load()
     let deadline = ProcessInfo.processInfo.systemUptime + 35
     while !bridge.isReady && ProcessInfo.processInfo.systemUptime < deadline {
@@ -222,10 +327,15 @@ final class RunnerTests: XCTestCase {
   }
 
   @MainActor
-  private func verifyOfficialWebSessionRPC(_ directory: URL, bridge: IosOfficialWebBridge) async throws {
-    let requestURL = directory.appendingPathComponent("official-rpc-request.json")
-    let errorURL = directory.appendingPathComponent("official-host-ci-error")
+  private func verifyOfficialWebSessionRPC(_ directory: URL, bridge: IosOfficialWebBridge,
+                                           mailbox: OfficialHostCIMailbox) async throws {
+    let ready = try await waitForOfficialHostFile(directory.appendingPathComponent("official-host-ci-ready"),
+                                                  mailbox: mailbox, seconds: 35)
+    let host = try XCTUnwrap(JSONSerialization.jsonObject(with: ready) as? [String: Any])
+    let workspaceId = try XCTUnwrap(host["workspaceId"] as? String)
+    let workspaceJSON = try JSONEncoder().encode(workspaceId)
     let raw = try await pageResult(bridge.webView, """
+      const workspaceId = \(String(decoding: workspaceJSON, as: UTF8.self));
       let count = 0;
       async function rpc(method, args) {
         const rpcId = 'ios-web-test-' + ++count;
@@ -240,57 +350,189 @@ final class RunnerTests: XCTestCase {
         }
         return reply.result.value;
       }
-      const first = await rpc('session/create', {request: {}});
-      const second = await rpc('session/create', {request: {}});
+      const empty = await rpc('session/list', {_request: {}});
+      const first = await rpc('session/create', {request: {workspaceId}});
+      const second = await rpc('session/create', {request: {workspaceId}});
       const list = await rpc('session/list', {_request: {}});
       const controller = new AbortController();
       const iterator = window.__DSH_TRANSPORT__.openStream('session/follow', {
         args: {request: {address: {kind: 'session', sessionId: first.sessionId}, maxMessages: 10}},
       }, controller.signal)[Symbol.asyncIterator]();
-      const initial = (await iterator.next()).value;
+      let initial, update, closed;
       const title = 'WebKit stream fixture';
-      await rpc('session/rename', {request: {sessionId: first.sessionId, title}});
-      const update = (await iterator.next()).value;
-      controller.abort();
-      const closed = await iterator.return();
-      return { ids: [first.sessionId, second.sessionId], listed: list.items.map(x => x.sessionId),
-        openingMatches: initial.type === 'snapshot' && initial.header.id === first.sessionId,
-        updateMatches: update.type === 'event' && update.event.type === 'session/title' && update.event.data.title === title,
+      try {
+        initial = (await iterator.next()).value;
+        // Leave the second stream pull outstanding while a separate unary
+        // request writes the title. They must not serialize through one slot.
+        const pendingUpdate = iterator.next();
+        const [, frame] = await Promise.all([
+          rpc('session/rename', {request: {sessionId: first.sessionId, title}}), pendingUpdate,
+        ]);
+        update = frame.value;
+      } finally {
+        controller.abort();
+        closed = await iterator.return();
+      }
+      return { initiallyEmpty: empty.items.length === 0,
+        ids: [first.sessionId, second.sessionId], listed: list.items.map(x => x.sessionId),
+        openingMatches: initial?.type === 'snapshot' && initial.header.id === first.sessionId,
+        updateMatches: update?.type === 'event' && update.event.type === 'session/title' && update.event.data.title === title,
         closed: closed.done === true };
       """)
     let result = try XCTUnwrap(raw as? [String: Any])
     let ids = try XCTUnwrap(result["ids"] as? [String])
     let listed = try XCTUnwrap(result["listed"] as? [String])
+    let initiallyEmpty = result["initiallyEmpty"] as? Bool == true
+    let snapshotVerified = result["openingMatches"] as? Bool == true
+    let titleEventVerified = result["updateMatches"] as? Bool == true
+    let streamClosed = result["closed"] as? Bool == true
+    let sqlitePresent = FileManager.default.fileExists(atPath: directory.appendingPathComponent("OfficialHostCI/sessions/sessions.sqlite").path)
+    XCTAssertTrue(initiallyEmpty)
     XCTAssertEqual(ids.count, 2)
     XCTAssertEqual(Set(ids).count, 2)
     XCTAssertEqual(Set(listed), Set(ids))
-    XCTAssertEqual(result["openingMatches"] as? Bool, true)
-    XCTAssertEqual(result["updateMatches"] as? Bool, true)
-    XCTAssertEqual(result["closed"] as? Bool, true)
-    XCTAssertTrue(FileManager.default.fileExists(atPath: directory.appendingPathComponent("OfficialHostCI/sessions/sessions.sqlite").path))
-    bridge.invalidate()
-    // Acknowledge Host disposal before returning to the outer test, which
-    // removes the directory. Node must not write diagnostics into a removed path.
-    let stopped = directory.appendingPathComponent("official-host-ci-stopped")
-    try Data(#"{"stop":true}"#.utf8).write(to: requestURL, options: .atomic)
-    let stopDeadline = ProcessInfo.processInfo.systemUptime + 8
-    while ProcessInfo.processInfo.systemUptime < stopDeadline && !FileManager.default.fileExists(atPath: stopped.path) {
-      if let failure = try? String(contentsOf: errorURL, encoding: .utf8) {
-        throw NSError(domain: "OfficialHostCI", code: 1, userInfo: [NSLocalizedDescriptionKey: failure])
-      }
-      try await Task.sleep(for: .milliseconds(25))
-    }
-    _ = try XCTUnwrap(try? Data(contentsOf: stopped), "Official Host did not acknowledge shutdown")
+    XCTAssertTrue(snapshotVerified)
+    XCTAssertTrue(titleEventVerified)
+    XCTAssertTrue(streamClosed)
+    XCTAssertTrue(sqlitePresent)
+    XCTAssertGreaterThan(mailbox.peakConcurrentCalls, 1, "WebKit requests did not overlap across private lanes")
+    mailbox.allowBrowserSessionCreates = true
+
+    // The official sidebar intentionally hides non-current blank sessions.
+    // The test Host runs actual deterministic turns so both rows are eligible.
+    let idsJSON = try JSONEncoder().encode(ids)
+    let engaged = try await pageResult(bridge.webView, """
+      const response = await globalThis.__DSH_TRANSPORT__.fetch('api/ios-ci/engage', {
+        method: 'POST', headers: {'content-type': 'application/json'},
+        body: JSON.stringify({sessionIds: \(String(decoding: idsJSON, as: UTF8.self))}),
+      });
+      if (!response.ok) throw new Error('Official fixture turns: ' + response.status + ' ' + await response.text());
+      return (await response.json()).engaged === true;
+      """)
+    _ = try XCTUnwrap(engaged as? Bool == true ? true : nil, "Official Host did not complete both fixture turns")
+    let selection = try await verifyOfficialSidebar(bridge.webView, workspaceJSON: workspaceJSON, idsJSON: idsJSON)
+    let selected = try XCTUnwrap(selection["selectedSessionIds"] as? [String])
+    let workspaceVerified = selection["workspaceVerified"] as? Bool == true
+    XCTAssertTrue(workspaceVerified)
+    let selectionMatches = selected.count == ids.count && Set(selected) == Set(ids)
+    XCTAssertTrue(selectionMatches, "Expected both sessions selected by DOM clicks: \(ids), got \(selected)")
+    try await stopOfficialWebSession(directory, bridge: bridge, mailbox: mailbox)
+
     let report = try JSONSerialization.data(withJSONObject: [
-      "webKitToEmbeddedOfficialSessionRpcVerified": true, "sessionsCreated": ids.count,
-      "sqlitePresent": true, "usesLocalTCP": false, "officialUIReady": false,
-      "nodeStreamSnapshotVerified": true, "nodeStreamTitleEventVerified": true, "hostShutdownAcknowledged": true,
-      "stage": "ci-only-session-transport",
+      "webKitToEmbeddedOfficialSessionRpcVerified": initiallyEmpty && ids.count == 2
+        && Set(ids).count == 2 && Set(listed) == Set(ids),
+      "sessionsCreated": ids.count, "sqlitePresent": sqlitePresent, "usesLocalTCP": false, "officialUIReady": false,
+      "nodeStreamSnapshotVerified": snapshotVerified, "nodeStreamTitleEventVerified": titleEventVerified,
+      "nodeStreamClosed": streamClosed, "hostShutdownAcknowledged": true,
+      "officialSidebarWorkspaceVerified": workspaceVerified, "officialSidebarSessionSelectionVerified": selectionMatches,
+      "selectedSessionIds": selected, "peakConcurrentFileCalls": mailbox.peakConcurrentCalls,
+      "stage": "ci-only-official-sidebar-session-navigation",
     ])
     let attachment = XCTAttachment(data: report, uniformTypeIdentifier: "public.json")
     attachment.name = "official-web-embedded-session-rpc.json"
     attachment.lifetime = .keepAlways
     add(attachment)
+  }
+
+  @MainActor
+  private func verifyOfficialSidebar(_ web: WKWebView, workspaceJSON: Data, idsJSON: Data) async throws -> [String: Any] {
+    let observation = try await pageResult(web, """
+      const workspaceId = \(String(decoding: workspaceJSON, as: UTF8.self));
+      const ids = \(String(decoding: idsJSON, as: UTF8.self));
+      const root = document.getElementById('root');
+      const list = () => root?.querySelector('[data-sidebar-list-area]');
+      const row = (key) => list()?.querySelector(`[role="treeitem"][data-row-key="${CSS.escape(key)}"]`);
+      const workspace = () => row('workspace:' + workspaceId);
+      const conversation = () => root?.querySelector('[data-conversation-content][data-conversation-session]');
+      const collapsed = () => root?.querySelector('[data-sidebar-collapsed]');
+      const deadline = performance.now() + 22_000;
+      async function waitFor(label, observe) {
+        for (;;) {
+          const value = observe();
+          if (value) return value;
+          if (performance.now() >= deadline) {
+            const detail = {label, rows: Array.from(list()?.querySelectorAll('[data-row-key]') ?? [],
+                r => [r.getAttribute('data-row-key'), r.getAttribute('aria-expanded'), r.getAttribute('aria-selected')]),
+              conversation: conversation()?.getAttribute('data-conversation-session'),
+              slotErrors: Array.from(root?.querySelectorAll('[data-slot-error]') ?? [], x => x.getAttribute('data-slot-error')),
+              errors: globalThis.__iosOfficialErrors?.slice(0, 8), body: root?.textContent?.slice(0, 1024)};
+            throw new Error('Official sidebar: ' + JSON.stringify(detail));
+          }
+          await new Promise(resolve => setTimeout(resolve, 75));
+        }
+      }
+      async function openSidebar() {
+        if (collapsed()) {
+          const opener = await waitFor('sidebar opener', () => root?.querySelector('[data-sidebar-opener]'));
+          opener.click();
+        }
+        await waitFor('open sidebar', () => list() && !collapsed());
+      }
+      await waitFor('official live renderer', () => globalThis.__ModuleLoader__?.mode === 'live'
+        && !root?.querySelector('[data-dsh-boot]') && list());
+      await openSidebar();
+      const project = await waitFor('seeded workspace row', () => {
+        const item = workspace();
+        return item?.textContent.includes('iOS Test Workspace') && item;
+      });
+      if (project.getAttribute('aria-expanded') !== 'true') project.click();
+      await waitFor('expanded workspace', () => workspace()?.getAttribute('aria-expanded') === 'true');
+      const selectedSessionIds = [];
+      // The official browser may have restored one of these sessions already.
+      // Click the other row first so every click must change the real selection.
+      const activeId = conversation()?.getAttribute('data-conversation-session');
+      const order = activeId === ids[0] || row('session:' + ids[0])?.getAttribute('aria-selected') === 'true'
+        ? [ids[1], ids[0]] : ids;
+      for (const id of order) {
+        await openSidebar();
+        const item = await waitFor('workspace session row ' + id, () => {
+          const candidate = row('session:' + id);
+          return candidate && candidate.parentElement === workspace()?.parentElement && candidate;
+        });
+        if (item.getAttribute('aria-selected') !== 'false') throw new Error('Session already selected before click: ' + id);
+        item.click();
+        await waitFor('selected session ' + id, () => {
+          const active = conversation();
+          return row('session:' + id)?.getAttribute('aria-selected') === 'true'
+            && active?.getAttribute('data-conversation-session') === id
+            && active.getAttribute('data-content-phase') === 'active';
+        });
+        selectedSessionIds.push(conversation().getAttribute('data-conversation-session'));
+      }
+      return { workspaceVerified: true, selectedSessionIds };
+      """)
+    return try XCTUnwrap(observation as? [String: Any])
+  }
+
+  @MainActor
+  private func waitForOfficialHostFile(_ url: URL, mailbox: OfficialHostCIMailbox, seconds: TimeInterval) async throws -> Data {
+    let deadline = ProcessInfo.processInfo.systemUptime + seconds
+    repeat {
+      try mailbox.checkHostFailure()
+      if FileManager.default.fileExists(atPath: url.path) { return try Data(contentsOf: url) }
+      try await Task.sleep(for: .milliseconds(25))
+    } while ProcessInfo.processInfo.systemUptime < deadline
+    throw NSError(domain: "OfficialHostCI", code: 2,
+      userInfo: [NSLocalizedDescriptionKey: "Timed out waiting for \(url.lastPathComponent)"])
+  }
+
+  @MainActor
+  private func stopOfficialWebSession(_ directory: URL, bridge: IosOfficialWebBridge, mailbox: OfficialHostCIMailbox) async throws {
+    // Stop new stream opens and await closes while the bridge is still valid.
+    // Even if the page is gone, send the stop marker so Node can abort all lanes.
+    let closed = try? await pageResult(bridge.webView, """
+      await globalThis.__iosOfficialBridgeClose();
+      return true;
+      """, seconds: 8)
+    bridge.invalidate()
+    let stop = directory.appendingPathComponent("official-host-ci-stop")
+    let stopped = directory.appendingPathComponent("official-host-ci-stopped")
+    if !FileManager.default.fileExists(atPath: stopped.path) {
+      try Data("1".utf8).write(to: stop, options: .atomic)
+      _ = try await waitForOfficialHostFile(stopped, mailbox: mailbox, seconds: 8)
+    }
+    try mailbox.removeSettledFiles()
+    XCTAssertEqual(closed as? Bool, true, "The official page did not close its stream transport")
   }
 
   @MainActor
@@ -497,7 +739,7 @@ final class RunnerTests: XCTestCase {
   /// Avoid the Swift WebKit overlay missing from the iOS 18 simulator.
   /// Await the JS promise in the page and retrieve its result with a bounded poll.
   @MainActor
-  private func pageResult(_ web: WKWebView, _ body: String) async throws -> Any? {
+  private func pageResult(_ web: WKWebView, _ body: String, seconds: TimeInterval = 27) async throws -> Any? {
     let slot = "__iosTest_" + UUID().uuidString.replacingOccurrences(of: "-", with: "")
     _ = try await web.evaluateJavaScript("""
       void (async () => { \(body) })().then(
@@ -505,7 +747,7 @@ final class RunnerTests: XCTestCase {
         error => globalThis.\(slot) = JSON.stringify({error: String(error)}));
       true;
       """)
-    let deadline = ProcessInfo.processInfo.systemUptime + 27
+    let deadline = ProcessInfo.processInfo.systemUptime + seconds
     while ProcessInfo.processInfo.systemUptime < deadline {
       let raw = try await web.evaluateJavaScript("""
         (() => { const value = globalThis.\(slot); delete globalThis.\(slot); return value ?? ''; })()
@@ -522,37 +764,59 @@ final class RunnerTests: XCTestCase {
     throw URLError(.timedOut)
   }
 
-  private func request(_ mailbox: IosChatMailbox, _ method: IosChatMailbox.Method,
-                       _ value: String? = nil) throws -> [String: Any] {
-    let done = expectation(description: "chat mailbox reply")
-    var response: Result<[String: Any], IosChatMailbox.Failure>?
-    mailbox.request(method, value: value) { reply in
-      response = reply
-      done.fulfill()
+  private typealias ChatReply = Result<[String: Any], IosChatMailbox.Failure>
+
+  @MainActor
+  private func awaitChatReply(_ method: IosChatMailbox.Method,
+                              submit: (@escaping (ChatReply) -> Void) -> Void) async throws -> [String: Any] {
+    // The production mailbox always completes on the main queue. Suspend the
+    // XCTest instead of blocking that queue with a synchronous expectation.
+    try await withCheckedThrowingContinuation { continuation in
+      var pending: CheckedContinuation<[String: Any], Error>? = continuation
+      let timeout = Task { @MainActor in
+        do { try await Task.sleep(for: .seconds(30)) } catch { return }
+        let waiting = pending
+        pending = nil
+        waiting?.resume(throwing: NSError(domain: "IosChatMailboxCI", code: 1,
+          userInfo: [NSLocalizedDescriptionKey: "Chat mailbox timed out: \(method.rawValue)"]))
+      }
+      submit { reply in
+        timeout.cancel()
+        guard let waiting = pending else { return }
+        pending = nil
+        switch reply {
+        case .success(let value): waiting.resume(returning: value)
+        case .failure(let error): waiting.resume(throwing: error)
+        }
+      }
     }
-    wait(for: [done], timeout: 30)
-    return try XCTUnwrap(response).get()
   }
 
+  @MainActor
   private func request(_ mailbox: IosChatMailbox, _ method: IosChatMailbox.Method,
-                       params: [String: Any]) throws -> [String: Any] {
-    let done = expectation(description: "chat mailbox structured reply")
-    var response: Result<[String: Any], IosChatMailbox.Failure>?
-    mailbox.request(method, params: params) { reply in
-      response = reply
-      done.fulfill()
+                       _ value: String? = nil) async throws -> [String: Any] {
+    try await awaitChatReply(method) { completion in
+      mailbox.request(method, value: value, completion: completion)
     }
-    wait(for: [done], timeout: 30)
-    return try XCTUnwrap(response).get()
   }
 
+  @MainActor
+  private func request(_ mailbox: IosChatMailbox, _ method: IosChatMailbox.Method,
+                       params: [String: Any]) async throws -> [String: Any] {
+    try await awaitChatReply(method) { completion in
+      mailbox.request(method, params: params, completion: completion)
+    }
+  }
+
+  @MainActor
   private func waitForChat(_ mailbox: IosChatMailbox, seconds: TimeInterval = 10,
-                           until predicate: ([String: Any]) -> Bool) throws -> [String: Any] {
+                           until predicate: ([String: Any]) -> Bool) async throws -> [String: Any] {
     let deadline = ProcessInfo.processInfo.systemUptime + seconds
     var last: [String: Any] = [:]
     repeat {
-      last = try request(mailbox, .snapshot)
+      last = try await request(mailbox, .snapshot)
       if predicate(last) { return last }
+      try await Task.sleep(for: .milliseconds(25))
     } while ProcessInfo.processInfo.systemUptime < deadline
     XCTFail("Chat state not observed: \(last["state"] ?? "unknown") \(last["errorCode"] ?? "none")")
     return last

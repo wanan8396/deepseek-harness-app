@@ -16,6 +16,7 @@ const ROWS = [
   ['sessionQuery', '@deepseek-ai/dsh-session-query-sqlite', { path: ':memory:', openAt: 'never' }],
   ['systemPrompt', '@deepseek-ai/dsh-system-prompt'],
   ['tools', '@deepseek-ai/dsh-tools'],
+  ['toolExecutorNative', '@deepseek-ai/dsh-tool-executor-native'],
   ['llm', '@deepseek-ai/dsh-llm'],
   ['agents', '@deepseek-ai/dsh-agent'],
   ['agentLoop', '@deepseek-ai/dsh-agent-loop', { agents: [] }],
@@ -29,6 +30,8 @@ const ROWS = [
   ['connection', '@deepseek-ai/dsh-client-connection'],
   ['typert', '@deepseek-ai/dsh-typert-registry'],
   ['remoteAccess', '@deepseek-ai/dsh-api-remote-access'],
+  ['apiRemotes', '@deepseek-ai/dsh-api-remotes'],
+  ['workspaceController', '@deepseek-ai/dsh-api-workspace-controller'],
   ['gateway', '@deepseek-ai/dsh-api-gateway'],
   ['sessionController', '@deepseek-ai/dsh-api-session-controller'],
 ];
@@ -38,7 +41,7 @@ const ROWS = [
  * `stateDirectory` must be an absolute App-private directory; it holds the
  * official credential store and any service-private files.
  */
-export async function createOfficialHost({ seed, stateDirectory, clientPackages = [] }) {
+export async function createOfficialHost({ seed, stateDirectory, clientPackages = [], fixtureChallenge, appChannel }) {
   if (typeof seed !== 'string' || !isAbsolute(seed)) throw new TypeError('seed must be absolute');
   if (typeof stateDirectory !== 'string' || !isAbsolute(stateDirectory)) {
     throw new TypeError('stateDirectory must be absolute');
@@ -49,6 +52,10 @@ export async function createOfficialHost({ seed, stateDirectory, clientPackages 
   }
   const root = resolve(seed);
   const state = resolve(stateDirectory);
+  if (fixtureChallenge !== undefined && appChannel !== undefined) throw new TypeError('Select exactly one model route');
+  const app = appChannel === undefined ? undefined
+    : await import(pathToFileURL(join(root, 'official-app-services.mjs')).href);
+  const modelSelection = app?.officialAppModelSelection(appChannel.channel, appChannel.apiKey);
   await mkdir(state, { recursive: true, mode: 0o700 });
   await chmod(state, 0o700);
   const work = await mkdtemp(join(state, '.host-'));
@@ -60,6 +67,9 @@ export async function createOfficialHost({ seed, stateDirectory, clientPackages 
   const config = join(work, 'cordis.json');
   await writeFile(join(work, 'package.json'), '{}\n', { flag: 'wx' });
   const hostRows = [...ROWS, ...extraPackages.map(pkg => [pkg.slice('@deepseek-ai/dsh-'.length), pkg])];
+  if (fixtureChallenge !== undefined) {
+    hostRows.push(['iosFixtureModel', './core-fixture-model.mjs', { challenge: fixtureChallenge }]);
+  }
   const rows = hostRows.map(([id, pkg, extra]) => {
     const row = { id, name: pkg.startsWith('./') ? pathToFileURL(resolve(root, pkg)).href : entry(pkg) };
     if (id === 'credentials') {
@@ -67,9 +77,8 @@ export async function createOfficialHost({ seed, stateDirectory, clientPackages 
     } else if (id === 'attachments') {
       row.config = { dshHome: state };
     } else if (id === 'fs') {
-      row.config = { root: state };
-    } else if (id === 'workspace') {
-      row.config = { root: state };
+      // A resolution default only. The carrier separately limits workspace routes.
+      row.config = { cwd: state };
     } else if (id === 'sessionPersistence') {
       row.config = { directory: join(state, 'sessions') };
     } else if (id === 'storageJson') {
@@ -79,7 +88,8 @@ export async function createOfficialHost({ seed, stateDirectory, clientPackages 
     } else if (id === 'agentDefaultModel') {
       // The stock frontend picks a route from its own Models page; this default
       // only satisfies the service contract so the session API can mount.
-      row.config = { provider: 'ios-custom', model: 'deepseek-flash' };
+      row.config = modelSelection ?? (fixtureChallenge === undefined ? { provider: 'ios-custom', model: 'deepseek-flash' }
+        : { provider: 'ios-offline-fixture', model: 'deterministic-text' });
     } else if (id === 'sessionController') {
       row.config = { nativeOpen: false };
     } else if (pkg === '@deepseek-ai/dsh-api-workspace-controller') {
@@ -97,10 +107,13 @@ export async function createOfficialHost({ seed, stateDirectory, clientPackages 
     // Rows use absolute URLs so the configuration can live outside the seed.
     // Register the official generated schema explicitly instead of letting
     // Gateway fall back to inferring the contract from JS parameter names.
-    const { TYPERT } = await import(entry('@deepseek-ai/dsh-api-session-controller', 'lib/typert.host.js'));
     const typert = ctx.get('typert');
     if (!typert) throw new Error('IOS_HOST_TYPERT_MISSING');
-    ctx.effect(() => typert.register(TYPERT));
+    for (const owner of ['@deepseek-ai/dsh-api-remote-access', '@deepseek-ai/dsh-api-session-controller',
+      '@deepseek-ai/dsh-api-workspace-controller']) {
+      const { TYPERT } = await import(entry(owner, 'lib/typert.host.js'));
+      ctx.effect(() => typert.register(TYPERT));
+    }
   } catch (error) {
     await ctx?.fiber.dispose();
     await rm(work, { recursive: true, force: true });
@@ -120,14 +133,28 @@ export async function createOfficialHost({ seed, stateDirectory, clientPackages 
       : inactive.length ? `IOS_HOST_INACTIVE:${inactive.join(',')}` : 'IOS_HOST_SERVICE_MISSING';
     throw new Error(reason);
   }
+  const lifetime = new AbortController();
+  let appServices;
+  if (app) {
+    try {
+      appServices = await app.registerOfficialAppServices(ctx, {
+        workspace: join(state, 'Workspace'), stateDirectory: state,
+        channel: appChannel.channel, apiKey: appChannel.apiKey, lifetimeSignal: lifetime.signal,
+      });
+    } catch (error) {
+      await ctx.fiber.dispose();
+      await rm(work, { recursive: true, force: true });
+      throw error;
+    } finally { appChannel = undefined; }
+  }
   const peer = connection.createPeer({ principal: { kind: 'owner' }, interactions: 'answer' });
   const shared = connection.createSharedFetchHandler('/api');
   const gateway = ctx.get('typertGateway');
   async function* emptyUplink() {}
   let disposed;
   return Object.freeze({
-    // The page transport already refuses other schemes; this repeats the fence
-    // so a compromised page cannot widen the Host boundary.
+    // The caller must also scope its published method/file routes and every
+    // workspace argument; the generated owner Peer alone is not an ACL.
     async fetch(request) {
       if (!(request instanceof Request)) throw new TypeError('Request required');
       const url = new URL(request.url);
@@ -136,6 +163,8 @@ export async function createOfficialHost({ seed, stateDirectory, clientPackages 
       }
       return shared.fetch(new Request(`http://bundle${url.pathname}${url.search}`, request), peer);
     },
+    appWorkspace: appServices?.workspace,
+    containsSensitiveText: appServices?.containsSensitiveText,
     // Used by the cloud exporter; no Web server needs to listen for this graph.
     clientGraph() { return ctx.get('clientModules')?.graph(); },
     clientBundle(request) { return ctx.get('clientModules')?.fetchBundle(request); },
@@ -144,10 +173,14 @@ export async function createOfficialHost({ seed, stateDirectory, clientPackages 
     },
     dispose() {
       disposed ??= (async () => {
+        lifetime.abort();
         try { await peer.dispose(); }
         finally {
-          await ctx.fiber.dispose();
-          await rm(work, { recursive: true, force: true });
+          try { await appServices?.dispose(); }
+          finally {
+            try { await ctx.fiber.dispose(); }
+            finally { await rm(work, { recursive: true, force: true }); }
+          }
         }
       })();
       return disposed;

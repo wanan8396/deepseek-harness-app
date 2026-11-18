@@ -55,6 +55,7 @@ jobs:
         run: |
           python3 tooling/prepare_ios_loader.py --seed "$RUNNER_TEMP/dsh-ios-seed" --phase official-host-ci --output "$RUNNER_TEMP/dsh-ios-official-host-ci"
           node runtime/ios/test-official-host.mjs "$RUNNER_TEMP/dsh-ios-official-host-ci"
+          node runtime/ios/test-official-app-services.mjs "$RUNNER_TEMP/dsh-ios-official-host-ci"
           tar -czf "$RUNNER_TEMP/dsh-ios-official-host-ci.tar.gz" -C "$RUNNER_TEMP/dsh-ios-official-host-ci" .
       - name: Export the lock-pinned official sidebar and composer preview
         run: node runtime/ios/export-web-shell-preview.mjs "$RUNNER_TEMP/dsh-ios-seed" "$RUNNER_TEMP/dsh-ios-web-shell-preview" "$RUNNER_TEMP/dsh-ios-official-host-ci"
