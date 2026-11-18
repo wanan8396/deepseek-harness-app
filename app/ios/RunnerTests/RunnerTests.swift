@@ -105,6 +105,17 @@ final class RunnerTests: XCTestCase {
     XCTAssertEqual(failed["errorCode"] as? String, "IOS_CHAT_AUTH_FAILED")
     XCTAssertFalse(String(describing: failed).contains(apiKey))
     XCTAssertEqual(try request(mailbox, .stop)["state"] as? String, "stopped")
+
+    let chatEvidence: [String: Any] = [
+      "modelTransport": "synthetic-https-response", "bridge": "swift-private-file-mailbox",
+      "officialAdapterVerified": true, "inProcessChatVerified": true, "cancellationVerified": true,
+      "closeReopenVerified": true, "authFailureVerified": true, "liveModelVerified": false,
+    ]
+    let evidence = XCTAttachment(data: try JSONSerialization.data(withJSONObject: chatEvidence),
+      uniformTypeIdentifier: "public.json")
+    evidence.name = "embedded-ios-chat-verification.json"
+    evidence.lifetime = .keepAlways
+    add(evidence)
   }
 
   private func request(_ mailbox: IosChatMailbox, _ method: IosChatMailbox.Method,

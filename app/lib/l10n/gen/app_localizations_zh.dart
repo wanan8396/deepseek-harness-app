@@ -289,10 +289,10 @@ class L10nZh extends L10n {
   String get iosLocalNotDetected => '尚未检测';
 
   @override
-  String get iosLocalDshNotStarted => '此版本尚未提供正式聊天';
+  String get iosLocalDiagnosticsTitle => '本机验证结果不代表聊天状态';
 
   @override
-  String get iosLocalProbeOnly => '这是本机运行验证版。测试会话会在检查结束后关闭；此提示不是启动故障。请以下方各项检查结果为准。';
+  String get iosLocalProbeOnly => '诊断使用独立的测试会话，检查结束后会关闭。请打开本机聊天查看聊天运行时状态并发送真实消息。';
 
   @override
   String get iosLocalCapabilitiesTitle => '本次原生能力检测';
@@ -422,6 +422,117 @@ class L10nZh extends L10n {
 
   @override
   String get iosLocalRefresh => '刷新状态';
+
+  @override
+  String get iosChatOpen => '本机聊天';
+
+  @override
+  String get iosChatScope => 'DSH 在这台 iPhone 或 iPad 上运行。消息通过 HTTPS 发送至 DeepSeek 官方 API，由模型生成回复。';
+
+  @override
+  String get iosChatKeyLabel => 'DeepSeek API 密钥';
+
+  @override
+  String get iosChatKeyHelp => '密钥仅供本次引擎运行使用。要更换密钥，请先停止聊天引擎。重新启动会恢复这台设备上保存的聊天记录。';
+
+  @override
+  String get iosChatStart => '启动聊天引擎';
+
+  @override
+  String get iosChatStop => '停止聊天引擎';
+
+  @override
+  String get iosChatUser => '你';
+
+  @override
+  String get iosChatAssistant => 'DeepSeek';
+
+  @override
+  String get iosChatMessageHint => '输入消息';
+
+  @override
+  String get iosChatSend => '发送消息';
+
+  @override
+  String get iosChatCancel => '取消回复';
+
+  @override
+  String get iosChatStarting => '正在启动本机聊天引擎…';
+
+  @override
+  String get iosChatSending => '正在提交消息…';
+
+  @override
+  String get iosChatCancelling => '正在取消回复…';
+
+  @override
+  String get iosChatStopping => '正在停止本机聊天引擎…';
+
+  @override
+  String get iosChatStateUnknown => '聊天状态未知';
+
+  @override
+  String get iosChatStopped => '聊天引擎已停止';
+
+  @override
+  String get iosChatReady => '本机聊天引擎已就绪，发送消息后才会检查模型访问权限。';
+
+  @override
+  String get iosChatRunning => '正在等待 DeepSeek 回复…';
+
+  @override
+  String get iosChatRefreshNeeded => '请先刷新状态，再重试。';
+
+  @override
+  String get iosChatPollingPaused => '已暂停自动更新。可刷新状态继续查看回复。';
+
+  @override
+  String get iosChatKeyInvalid => '请输入不含空格的 DeepSeek API 密钥（最多 1,024 个可打印 ASCII 字符）。';
+
+  @override
+  String get iosChatInputInvalid => '请输入不超过 8 KB 的消息。';
+
+  @override
+  String get iosChatBusyError => '聊天引擎正忙。';
+
+  @override
+  String get iosChatAuthError => 'DeepSeek 未接受此 API 密钥。请停止聊天引擎，再使用有效密钥启动。';
+
+  @override
+  String get iosChatRateLimitError => '已达到 DeepSeek API 的请求频率或账户额度上限。';
+
+  @override
+  String get iosChatNetworkError => '本机引擎未能连接 DeepSeek API。请检查网络连接。';
+
+  @override
+  String get iosChatModelError => 'DeepSeek API 未返回可用的回复。';
+
+  @override
+  String get iosChatStorageError => '读取或保存本机聊天记录失败。';
+
+  @override
+  String get iosChatTimeoutError => '请求已超时。';
+
+  @override
+  String get iosChatUnavailableError => '此应用的本机聊天桥接不可用。';
+
+  @override
+  String get iosChatStartupError => '本机聊天引擎启动失败。';
+
+  @override
+  String get iosChatSendError => '本机引擎未确认接收消息。';
+
+  @override
+  String get iosChatCancelError => '本机引擎未确认取消回复。';
+
+  @override
+  String get iosChatStopError => '本机引擎未确认已停止。';
+
+  @override
+  String get iosChatResponseLimitError => '此会话超出本机桥接的显示上限。';
+
+  @override
+  String get iosChatProtocolError => '本机聊天桥接返回了意外结果。';
 
   @override
   String localEnvThisPhoneDetail(int storage, int memory) {

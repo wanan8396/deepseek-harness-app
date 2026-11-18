@@ -626,16 +626,16 @@ abstract class L10n {
   /// **'尚未检测'**
   String get iosLocalNotDetected;
 
-  /// No description provided for @iosLocalDshNotStarted.
+  /// No description provided for @iosLocalDiagnosticsTitle.
   ///
   /// In zh, this message translates to:
-  /// **'此版本尚未提供正式聊天'**
-  String get iosLocalDshNotStarted;
+  /// **'本机验证结果不代表聊天状态'**
+  String get iosLocalDiagnosticsTitle;
 
   /// No description provided for @iosLocalProbeOnly.
   ///
   /// In zh, this message translates to:
-  /// **'这是本机运行验证版。测试会话会在检查结束后关闭；此提示不是启动故障。请以下方各项检查结果为准。'**
+  /// **'诊断使用独立的测试会话，检查结束后会关闭。请打开本机聊天查看聊天运行时状态并发送真实消息。'**
   String get iosLocalProbeOnly;
 
   /// No description provided for @iosLocalCapabilitiesTitle.
@@ -895,6 +895,228 @@ abstract class L10n {
   /// In zh, this message translates to:
   /// **'刷新状态'**
   String get iosLocalRefresh;
+
+  /// No description provided for @iosChatOpen.
+  ///
+  /// In zh, this message translates to:
+  /// **'本机聊天'**
+  String get iosChatOpen;
+
+  /// No description provided for @iosChatScope.
+  ///
+  /// In zh, this message translates to:
+  /// **'DSH 在这台 iPhone 或 iPad 上运行。消息通过 HTTPS 发送至 DeepSeek 官方 API，由模型生成回复。'**
+  String get iosChatScope;
+
+  /// No description provided for @iosChatKeyLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'DeepSeek API 密钥'**
+  String get iosChatKeyLabel;
+
+  /// No description provided for @iosChatKeyHelp.
+  ///
+  /// In zh, this message translates to:
+  /// **'密钥仅供本次引擎运行使用。要更换密钥，请先停止聊天引擎。重新启动会恢复这台设备上保存的聊天记录。'**
+  String get iosChatKeyHelp;
+
+  /// No description provided for @iosChatStart.
+  ///
+  /// In zh, this message translates to:
+  /// **'启动聊天引擎'**
+  String get iosChatStart;
+
+  /// No description provided for @iosChatStop.
+  ///
+  /// In zh, this message translates to:
+  /// **'停止聊天引擎'**
+  String get iosChatStop;
+
+  /// No description provided for @iosChatUser.
+  ///
+  /// In zh, this message translates to:
+  /// **'你'**
+  String get iosChatUser;
+
+  /// No description provided for @iosChatAssistant.
+  ///
+  /// In zh, this message translates to:
+  /// **'DeepSeek'**
+  String get iosChatAssistant;
+
+  /// No description provided for @iosChatMessageHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'输入消息'**
+  String get iosChatMessageHint;
+
+  /// No description provided for @iosChatSend.
+  ///
+  /// In zh, this message translates to:
+  /// **'发送消息'**
+  String get iosChatSend;
+
+  /// No description provided for @iosChatCancel.
+  ///
+  /// In zh, this message translates to:
+  /// **'取消回复'**
+  String get iosChatCancel;
+
+  /// No description provided for @iosChatStarting.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在启动本机聊天引擎…'**
+  String get iosChatStarting;
+
+  /// No description provided for @iosChatSending.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在提交消息…'**
+  String get iosChatSending;
+
+  /// No description provided for @iosChatCancelling.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在取消回复…'**
+  String get iosChatCancelling;
+
+  /// No description provided for @iosChatStopping.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在停止本机聊天引擎…'**
+  String get iosChatStopping;
+
+  /// No description provided for @iosChatStateUnknown.
+  ///
+  /// In zh, this message translates to:
+  /// **'聊天状态未知'**
+  String get iosChatStateUnknown;
+
+  /// No description provided for @iosChatStopped.
+  ///
+  /// In zh, this message translates to:
+  /// **'聊天引擎已停止'**
+  String get iosChatStopped;
+
+  /// No description provided for @iosChatReady.
+  ///
+  /// In zh, this message translates to:
+  /// **'本机聊天引擎已就绪，发送消息后才会检查模型访问权限。'**
+  String get iosChatReady;
+
+  /// No description provided for @iosChatRunning.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在等待 DeepSeek 回复…'**
+  String get iosChatRunning;
+
+  /// No description provided for @iosChatRefreshNeeded.
+  ///
+  /// In zh, this message translates to:
+  /// **'请先刷新状态，再重试。'**
+  String get iosChatRefreshNeeded;
+
+  /// No description provided for @iosChatPollingPaused.
+  ///
+  /// In zh, this message translates to:
+  /// **'已暂停自动更新。可刷新状态继续查看回复。'**
+  String get iosChatPollingPaused;
+
+  /// No description provided for @iosChatKeyInvalid.
+  ///
+  /// In zh, this message translates to:
+  /// **'请输入不含空格的 DeepSeek API 密钥（最多 1,024 个可打印 ASCII 字符）。'**
+  String get iosChatKeyInvalid;
+
+  /// No description provided for @iosChatInputInvalid.
+  ///
+  /// In zh, this message translates to:
+  /// **'请输入不超过 8 KB 的消息。'**
+  String get iosChatInputInvalid;
+
+  /// No description provided for @iosChatBusyError.
+  ///
+  /// In zh, this message translates to:
+  /// **'聊天引擎正忙。'**
+  String get iosChatBusyError;
+
+  /// No description provided for @iosChatAuthError.
+  ///
+  /// In zh, this message translates to:
+  /// **'DeepSeek 未接受此 API 密钥。请停止聊天引擎，再使用有效密钥启动。'**
+  String get iosChatAuthError;
+
+  /// No description provided for @iosChatRateLimitError.
+  ///
+  /// In zh, this message translates to:
+  /// **'已达到 DeepSeek API 的请求频率或账户额度上限。'**
+  String get iosChatRateLimitError;
+
+  /// No description provided for @iosChatNetworkError.
+  ///
+  /// In zh, this message translates to:
+  /// **'本机引擎未能连接 DeepSeek API。请检查网络连接。'**
+  String get iosChatNetworkError;
+
+  /// No description provided for @iosChatModelError.
+  ///
+  /// In zh, this message translates to:
+  /// **'DeepSeek API 未返回可用的回复。'**
+  String get iosChatModelError;
+
+  /// No description provided for @iosChatStorageError.
+  ///
+  /// In zh, this message translates to:
+  /// **'读取或保存本机聊天记录失败。'**
+  String get iosChatStorageError;
+
+  /// No description provided for @iosChatTimeoutError.
+  ///
+  /// In zh, this message translates to:
+  /// **'请求已超时。'**
+  String get iosChatTimeoutError;
+
+  /// No description provided for @iosChatUnavailableError.
+  ///
+  /// In zh, this message translates to:
+  /// **'此应用的本机聊天桥接不可用。'**
+  String get iosChatUnavailableError;
+
+  /// No description provided for @iosChatStartupError.
+  ///
+  /// In zh, this message translates to:
+  /// **'本机聊天引擎启动失败。'**
+  String get iosChatStartupError;
+
+  /// No description provided for @iosChatSendError.
+  ///
+  /// In zh, this message translates to:
+  /// **'本机引擎未确认接收消息。'**
+  String get iosChatSendError;
+
+  /// No description provided for @iosChatCancelError.
+  ///
+  /// In zh, this message translates to:
+  /// **'本机引擎未确认取消回复。'**
+  String get iosChatCancelError;
+
+  /// No description provided for @iosChatStopError.
+  ///
+  /// In zh, this message translates to:
+  /// **'本机引擎未确认已停止。'**
+  String get iosChatStopError;
+
+  /// No description provided for @iosChatResponseLimitError.
+  ///
+  /// In zh, this message translates to:
+  /// **'此会话超出本机桥接的显示上限。'**
+  String get iosChatResponseLimitError;
+
+  /// No description provided for @iosChatProtocolError.
+  ///
+  /// In zh, this message translates to:
+  /// **'本机聊天桥接返回了意外结果。'**
+  String get iosChatProtocolError;
 
   /// No description provided for @localEnvThisPhoneDetail.
   ///

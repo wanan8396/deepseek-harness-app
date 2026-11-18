@@ -8,7 +8,7 @@ import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import { SessionId } from '@deepseek-ai/dsh-session';
 import { SessionPersistence } from '@deepseek-ai/dsh-session-persistence';
 import {
-  CHAT_ENDPOINT, CHAT_MAX_TOKENS, CHAT_MODEL, CHAT_PROVIDER,
+  CHAT_MAX_TOKENS, CHAT_MODEL, CHAT_PROVIDER,
   chatFailureCode, chatStream, createDeepSeekAdapter,
 } from './chat-deepseek-provider.mjs';
 
@@ -101,7 +101,7 @@ async function durableSessionId(directory, work) {
   return id;
 }
 
-export async function createChatEngine({ directory, apiKey, adapterFactory } = {}) {
+export async function createChatEngine({ directory, apiKey } = {}) {
   if (typeof apiKey !== 'string' || !apiKey.length || apiKey.length > 1024 || /[^!-~]/.test(apiKey)) {
     throw chatError('IOS_CHAT_KEY_INVALID');
   }
@@ -194,10 +194,7 @@ export async function createChatEngine({ directory, apiKey, adapterFactory } = {
     if (!(store instanceof SessionPersistence)) { failure = 'IOS_CHAT_STORAGE_FAILED'; throw chatError(failure); }
     if (ctx.fiber.state !== 2 || rows.some(({ id }) => tree?.resolve(id)?.fiber?.state !== 2)) throw chatError(failure);
 
-    // This optional function is a Node-only fixture seam, never a field in
-    // mailbox messages or a choice controlled by launch environment/config.
-    const adapter = adapterFactory === undefined ? createDeepSeekAdapter(directory, () => key)
-      : await adapterFactory({ apiKey: key, endpoint: CHAT_ENDPOINT });
+    const adapter = createDeepSeekAdapter(directory, () => key);
     ctx.llm.registerAdapter([CHAT_PROVIDER], adapter);
     ctx.on('llm/stream', (options, next) => {
       if (options.sessionId !== sessionId || options.provider !== CHAT_PROVIDER || options.model !== CHAT_MODEL || !key) {

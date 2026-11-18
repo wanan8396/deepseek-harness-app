@@ -73,8 +73,8 @@ async function publish(directory, id, value) {
 }
 
 /** Swift owns the process UUID request folder; JS owns the DSH context and history.
- * createEngine is an internal injection point for desktop tests, never read from a request. */
-export function startChatMailbox(reportPath, { createEngine = createChatEngine, pollMs = 80 } = {}) {
+ * Both production and tests dispatch into the same engine factory. */
+export function startChatMailbox(reportPath, { pollMs = 80 } = {}) {
   if (!isAbsolute(reportPath)) throw new TypeError('Expected absolute report path');
   const directory = `${reportPath}.chat`;
   const dataDir = join(dirname(reportPath), 'ChatData');
@@ -92,7 +92,7 @@ export function startChatMailbox(reportPath, { createEngine = createChatEngine, 
         if (engine) return engine.snapshot();
         const apiKey = value.params.apiKey;
         value.params.apiKey = '';
-        engine = await createEngine({ directory: dataDir, apiKey });
+        engine = await createChatEngine({ directory: dataDir, apiKey });
         return engine.snapshot();
       }
       case 'snapshot': return engine ? engine.snapshot() : STOPPED;
@@ -116,7 +116,7 @@ export function startChatMailbox(reportPath, { createEngine = createChatEngine, 
       const stat = await lstat(directory);
       if (!stat.isDirectory() || stat.isSymbolicLink() || (stat.mode & 0o077) !== 0) return;
       // Parents like iOS /var alias to /private/var; only the mailbox leaf must be real.
-      if (await realpath(directory) !== join(await realpath(dirname(directory)), basename(directory))) return;
+        if (await realpath(directory) !== join(await realpath(dirname(directory)), basename(directory))) return;
       entries = await readdir(directory);
     } catch { return; }
     const now = Date.now();

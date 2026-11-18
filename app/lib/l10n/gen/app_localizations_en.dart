@@ -312,11 +312,11 @@ class L10nEn extends L10n {
   String get iosLocalNotDetected => 'Not checked yet';
 
   @override
-  String get iosLocalDshNotStarted => 'Chat is not available in this build';
+  String get iosLocalDiagnosticsTitle => 'Diagnostics, not chat status';
 
   @override
   String get iosLocalProbeOnly =>
-      'This build verifies on-device execution. Test sessions close when checks finish. This notice is not a startup error; see the individual results below.';
+      'Diagnostics use separate test sessions that close when the checks finish. Open On-device chat to check the chat runtime and send a real message.';
 
   @override
   String get iosLocalCapabilitiesTitle => 'Native capability checks for this run';
@@ -450,6 +450,121 @@ class L10nEn extends L10n {
 
   @override
   String get iosLocalRefresh => 'Refresh status';
+
+  @override
+  String get iosChatOpen => 'On-device chat';
+
+  @override
+  String get iosChatScope =>
+      'DSH runs on this iPhone or iPad. It sends your messages to the official DeepSeek API over HTTPS for model responses.';
+
+  @override
+  String get iosChatKeyLabel => 'DeepSeek API key';
+
+  @override
+  String get iosChatKeyHelp =>
+      'The key is kept only for this engine session. Stop the chat engine to change it. Starting again restores saved chat history from this device.';
+
+  @override
+  String get iosChatStart => 'Start chat engine';
+
+  @override
+  String get iosChatStop => 'Stop chat engine';
+
+  @override
+  String get iosChatUser => 'You';
+
+  @override
+  String get iosChatAssistant => 'DeepSeek';
+
+  @override
+  String get iosChatMessageHint => 'Enter a message';
+
+  @override
+  String get iosChatSend => 'Send message';
+
+  @override
+  String get iosChatCancel => 'Cancel response';
+
+  @override
+  String get iosChatStarting => 'Starting the on-device chat engine…';
+
+  @override
+  String get iosChatSending => 'Submitting your message…';
+
+  @override
+  String get iosChatCancelling => 'Cancelling the response…';
+
+  @override
+  String get iosChatStopping => 'Stopping the on-device chat engine…';
+
+  @override
+  String get iosChatStateUnknown => 'Chat status is unknown';
+
+  @override
+  String get iosChatStopped => 'Chat engine is stopped';
+
+  @override
+  String get iosChatReady => 'On-device chat engine is ready. Model access is checked when you send a message.';
+
+  @override
+  String get iosChatRunning => 'Waiting for a DeepSeek response…';
+
+  @override
+  String get iosChatRefreshNeeded => 'Refresh status before trying again.';
+
+  @override
+  String get iosChatPollingPaused => 'Automatic updates paused. Refresh status to continue viewing the response.';
+
+  @override
+  String get iosChatKeyInvalid => 'Enter a DeepSeek API key without spaces (up to 1,024 printable ASCII characters).';
+
+  @override
+  String get iosChatInputInvalid => 'Enter a message of no more than 8 KB.';
+
+  @override
+  String get iosChatBusyError => 'The chat engine is busy.';
+
+  @override
+  String get iosChatAuthError =>
+      'DeepSeek did not accept the API key. Stop the chat engine, then start it with a valid key.';
+
+  @override
+  String get iosChatRateLimitError => 'The DeepSeek API rate or account limit was reached.';
+
+  @override
+  String get iosChatNetworkError =>
+      'The on-device engine could not reach the DeepSeek API. Check your internet connection.';
+
+  @override
+  String get iosChatModelError => 'The DeepSeek API did not return a usable response.';
+
+  @override
+  String get iosChatStorageError => 'On-device chat history could not be read or saved.';
+
+  @override
+  String get iosChatTimeoutError => 'The request timed out.';
+
+  @override
+  String get iosChatUnavailableError => 'The on-device chat bridge is unavailable in this app.';
+
+  @override
+  String get iosChatStartupError => 'The on-device chat engine did not start.';
+
+  @override
+  String get iosChatSendError => 'The on-device engine did not confirm receipt of the message.';
+
+  @override
+  String get iosChatCancelError => 'The on-device engine did not confirm cancellation.';
+
+  @override
+  String get iosChatStopError => 'The on-device engine did not confirm that it stopped.';
+
+  @override
+  String get iosChatResponseLimitError => 'This chat is too large for the on-device bridge to display.';
+
+  @override
+  String get iosChatProtocolError => 'The on-device chat bridge returned an unexpected result.';
 
   @override
   String localEnvThisPhoneDetail(int storage, int memory) {
