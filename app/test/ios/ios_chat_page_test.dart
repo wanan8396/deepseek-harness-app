@@ -64,6 +64,7 @@ void main() {
 
   Future<void> mount(WidgetTester tester) async {
     usePhoneView(tester);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pumpWidget(testApp(const IosChatPage()));
     await _frames(tester);
   }

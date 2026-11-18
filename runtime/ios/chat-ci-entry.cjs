@@ -30,7 +30,9 @@ function installFetchFixture() {
     assert.equal(init.redirect, 'error');
     const headers = new Headers(init.headers);
     assert.equal(headers.get('accept'), 'text/event-stream');
-    assert.ok(headers.get('x-api-key') === key || headers.get('authorization') === `Bearer ${key}`);
+    assert.equal(headers.get('x-api-key'), key);
+    assert.equal(headers.get('anthropic-version'), '2023-06-01');
+    assert.match(headers.get('x-deepseek-harness-session-id'), /^[a-f0-9-]{36}$/);
     const { model, messages, stream, tools } = JSON.parse(init.body);
     assert.equal(model, 'deepseek-flash');
     assert.equal(stream, true);

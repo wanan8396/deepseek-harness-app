@@ -183,6 +183,7 @@ export async function createChatEngine({ directory, apiKey, adapterFactory } = {
     await chmod(directory, 0o700);
     work = await mkdtemp(join(directory, '.chat-boot-'));
     await chmod(work, 0o700);
+    const sessionId = await durableSessionId(directory, work);
     const rows = buildRows(directory);
     const config = join(work, 'cordis.json');
     await writeFile(config, JSON.stringify(rows), { flag: 'wx', mode: 0o600 });
@@ -199,17 +200,17 @@ export async function createChatEngine({ directory, apiKey, adapterFactory } = {
       : await adapterFactory({ apiKey: key, endpoint: CHAT_ENDPOINT });
     ctx.llm.registerAdapter([CHAT_PROVIDER], adapter);
     ctx.on('llm/stream', (options, next) => {
-      if (options.sessionId !== SESSION || options.provider !== CHAT_PROVIDER || options.model !== CHAT_MODEL || !key) {
+      if (options.sessionId !== sessionId || options.provider !== CHAT_PROVIDER || options.model !== CHAT_MODEL || !key) {
         throw chatError('IOS_CHAT_MODEL_FAILED');
       }
       return chatStream(next, key, options.signal);
     }, { prepend: true });
-    ctx.on('session/event', (session, event) => { if (session.id === SESSION) project(event); });
+    ctx.on('session/event', (session, event) => { if (session.id === sessionId) project(event); });
     ctx.on('agent/error', ({ agent, error }) => {
-      if (agent.id === SESSION) errorCode = chatFailureCode(error?.code);
+      if (agent.id === sessionId) errorCode = chatFailureCode(error?.code);
     });
     ctx.on('agent/assistant-stream', ({ agent, frame }) => {
-      if (agent.id !== SESSION) return;
+      if (agent.id !== sessionId) return;
       if (frame.type === 'start') { clearDraft(); attempt = frame.attemptId; }
       else if (frame.attemptId === attempt) {
         if (frame.type === 'end') clearDraft();
@@ -223,11 +224,14 @@ export async function createChatEngine({ directory, apiKey, adapterFactory } = {
 
     failure = 'IOS_CHAT_STORAGE_FAILED';
     const agentOptions = { provider: CHAT_PROVIDER, model: CHAT_MODEL, maxTokens: CHAT_MAX_TOKENS };
-    handle = await store.stat(SESSION) === undefined
-      ? await ctx.agents.create({ sessionId: SESSION, meta: { cwd: directory }, agentOptions })
-      : await ctx.agents.resume({ resumeSessionId: SESSION, agentOptions });
+    if (await store.stat(sessionId) === undefined) {
+      if ((await store.list()).length !== 0) throw chatError(failure);
+      handle = await ctx.agents.create({ sessionId, meta: { cwd: directory }, agentOptions });
+    } else {
+      handle = await ctx.agents.resume({ resumeSessionId: sessionId, agentOptions });
+    }
     await checkpoint();
-    const reader = await store.open(SESSION, 'read');
+    const reader = await store.open(sessionId, 'read');
     try {
       history.length = 0;
       for (const event of (await reader.read()).events) project(event);

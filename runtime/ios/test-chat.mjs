@@ -39,7 +39,7 @@ async function call(method, params = {}, expectedError) {
     const value = JSON.parse(raw);
     assert.equal(value.id, id);
     if (expectedError) { assert.equal(value.errorCode, expectedError); return; }
-    assert.equal(value.errorCode, undefined, JSON.stringify(value));
+    assert.equal(value.errorCode, undefined, `${method}:${JSON.stringify(value)}`);
     assert.deepEqual(Object.keys(value.result).sort(), ['draft', 'errorCode', 'messages', 'state']);
     return value.result;
   }
