@@ -50,8 +50,8 @@ jobs:
           node runtime/ios/export-web-bootstrap.mjs --seed "$RUNNER_TEMP/dsh-ios-seed" --output "$RUNNER_TEMP/dsh-ios-web-bootstrap"
           node runtime/ios/test-web-bootstrap.mjs "$RUNNER_TEMP/dsh-ios-seed" "$RUNNER_TEMP/dsh-ios-web-bootstrap"
           tar -czf "$RUNNER_TEMP/dsh-ios-web-bootstrap.tar.gz" -C "$RUNNER_TEMP/dsh-ios-web-bootstrap" .
-      - name: Prove the official Host API without a listening server
-        run: node runtime/ios/test-official-host.mjs "$RUNNER_TEMP/dsh-ios-seed"
+      - name: Prove official session RPC and streaming without a listening server
+        run: node runtime/ios/test-official-host.mjs "$RUNNER_TEMP/dsh-ios-seed" "$RUNNER_TEMP/dsh-ios-persistence"
       - name: Export exact tested runtime bundles for the iOS job
         run: |
           for phase in loader core persistence chat; do

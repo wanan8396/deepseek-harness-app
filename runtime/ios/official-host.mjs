@@ -48,15 +48,14 @@ export async function createOfficialHost({ seed, stateDirectory }) {
   await chmod(state, 0o700);
   const work = await mkdtemp(join(state, '.host-'));
   await chmod(work, 0o700);
-  const entry = (pkg) => pkg.startsWith('./')
-    ? new URL(pkg, import.meta.url).href
-    : pathToFileURL(join(root, 'node_modules', pkg, 'lib/index.js')).href;
-  // Official rows resolve their own package dependencies, so the config lives
-  // beside the seed rather than inside the App-private data directory.
+  const entry = (pkg, artifact = 'lib/index.js') =>
+    pathToFileURL(join(root, 'node_modules', pkg, artifact)).href;
+  // Keep writable configuration in the private state directory; place the
+  // adapter beside the locked node_modules so its bare ESM imports resolve.
   const config = join(work, 'cordis.json');
   await writeFile(join(work, 'package.json'), '{}\n', { flag: 'wx' });
   const rows = ROWS.map(([id, pkg, extra]) => {
-    const row = { id, name: entry(pkg) };
+    const row = { id, name: pkg.startsWith('./') ? pathToFileURL(resolve(root, pkg)).href : entry(pkg) };
     if (id === 'credentials') {
       row.config = { path: join(state, '.credentials.yaml'), dshHome: state, watch: false };
     } else if (id === 'attachments') {
@@ -87,7 +86,15 @@ export async function createOfficialHost({ seed, stateDirectory }) {
   let ctx;
   try {
     ctx = await boot('dsh-ios-official-host', config, []);
+    // Rows use absolute URLs so the configuration can live outside the seed.
+    // Register the official generated schema explicitly instead of letting
+    // Gateway fall back to inferring the contract from JS parameter names.
+    const { TYPERT } = await import(entry('@deepseek-ai/dsh-api-session-controller', 'lib/typert.host.js'));
+    const typert = ctx.get('typert');
+    if (!typert) throw new Error('IOS_HOST_TYPERT_MISSING');
+    ctx.effect(() => typert.register(TYPERT));
   } catch (error) {
+    await ctx?.fiber.dispose();
     await rm(work, { recursive: true, force: true });
     throw error;
   }
@@ -107,6 +114,8 @@ export async function createOfficialHost({ seed, stateDirectory }) {
   }
   const peer = connection.createPeer({ principal: { kind: 'owner' }, interactions: 'answer' });
   const shared = connection.createSharedFetchHandler('/api');
+  const gateway = ctx.get('typertGateway');
+  async function* emptyUplink() {}
   let disposed;
   return Object.freeze({
     // The page transport already refuses other schemes; this repeats the fence
@@ -119,10 +128,16 @@ export async function createOfficialHost({ seed, stateDirectory }) {
       }
       return shared.fetch(new Request(`http://bundle${url.pathname}${url.search}`, request), peer);
     },
+    openStream(endpoint, payload, signal, uplink = emptyUplink()) {
+      return gateway.wireStream.open(endpoint, payload, uplink, peer, signal);
+    },
     dispose() {
       disposed ??= (async () => {
-        await ctx.fiber.dispose();
-        await rm(work, { recursive: true, force: true });
+        try { await peer.dispose(); }
+        finally {
+          await ctx.fiber.dispose();
+          await rm(work, { recursive: true, force: true });
+        }
       })();
       return disposed;
     },
