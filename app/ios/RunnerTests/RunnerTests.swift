@@ -138,6 +138,12 @@ final class RunnerTests: XCTestCase {
     let config = WKWebViewConfiguration()
     config.websiteDataStore = .nonPersistent()
     config.setURLSchemeHandler(assets, forURLScheme: IosOfficialWebAssets.scheme)
+    config.userContentController.addUserScript(WKUserScript(source: """
+      window.__iosWebProbeErrors = [];
+      addEventListener('error', event => window.__iosWebProbeErrors.push(String(event.message || event.target?.src || 'resource-error')), true);
+      addEventListener('securitypolicyviolation', event => window.__iosWebProbeErrors.push(event.violatedDirective + ': ' + event.blockedURI));
+      addEventListener('unhandledrejection', event => window.__iosWebProbeErrors.push(String(event.reason)));
+      """, injectionTime: .atDocumentStart, forMainFrameOnly: true))
     let web = WKWebView(frame: CGRect(x: 0, y: 0, width: 390, height: 844), configuration: config)
     let navigation = WebAssetNavigation(expectation(description: "Stock DSH frontend loads from App URL"))
     web.navigationDelegate = navigation
@@ -148,9 +154,11 @@ final class RunnerTests: XCTestCase {
     XCTAssertTrue(assets.servedPaths.contains("index.html"))
     XCTAssertTrue(assets.servedPaths.contains { $0.hasPrefix("assets/index-") && $0.hasSuffix(".js") })
     XCTAssertTrue(assets.servedPaths.contains { $0.hasPrefix("assets/index-") && $0.hasSuffix(".css") })
-    let boot = try await web.evaluateJavaScript("document.querySelector('#root')?.textContent ?? ''") as? String
+    let boot = try await web.evaluateJavaScript("""
+      JSON.stringify({boot: document.querySelector('#root')?.textContent ?? '', errors: window.__iosWebProbeErrors})
+      """) as? String
     XCTAssertTrue(boot?.contains("window.__ModuleLoader__ bootstrap facade is missing") == true,
-      "Stock entry must execute; this gate deliberately supplies no module loader or fake backend")
+      "Stock entry must execute; no module loader or fake backend is supplied: \(boot ?? "no diagnostics")")
     let report = try JSONSerialization.data(withJSONObject: [
       "officialAssetsServed": true, "stockEntryExecuted": true, "usesLocalTCP": false,
       "officialUIReady": false, "missingCapability": "client-module-bootstrap-and-engine-transport",

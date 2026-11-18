@@ -145,7 +145,13 @@ jobs:
           xcrun simctl bootstatus "$device" -b
           xcodebuild test -workspace app/ios/Runner.xcworkspace -scheme Runner -configuration Debug -destination "id=$device" -resultBundlePath "$RUNNER_TEMP/ios-node-probe.xcresult" CODE_SIGNING_ALLOWED=NO | tee "$RUNNER_TEMP/ios-node-probe.log"
       - name: Export actual simulator JSON observations
-        run: xcrun xcresulttool export attachments --path "$RUNNER_TEMP/ios-node-probe.xcresult" --output-path dist/ios/test-attachments
+        if: always()
+        run: |
+          result="$RUNNER_TEMP/ios-node-probe.xcresult"
+          if [ -d "$result" ]; then
+            xcrun xcresulttool get test-results summary --path "$result" | tee dist/ios/simulator-test-summary.json
+            xcrun xcresulttool export attachments --path "$result" --output-path dist/ios/test-attachments
+          fi
       - name: Build unsigned iPhone and iPad application
         working-directory: app
         run: flutter build ios --release --no-codesign --no-pub --build-name 0.2.2 --build-number "$GITHUB_RUN_NUMBER"
