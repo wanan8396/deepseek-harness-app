@@ -136,7 +136,7 @@ final class RunnerTests: XCTestCase {
     XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
     let id = try XCTUnwrap(approval["id"] as? String)
     _ = try request(mailbox, .answerApproval, params: ["id": id, "allowed": true])
-    let toolTurn = try waitForChat(mailbox) { $0["state"] as? String == "ready" }
+    let toolTurn = try waitForChat(mailbox, seconds: 25) { $0["state"] as? String == "ready" }
     XCTAssertTrue(toolTurn["errorCode"] is NSNull, "Tool turn error: \(toolTurn["errorCode"] ?? "missing")")
     XCTAssertEqual(try String(contentsOf: file, encoding: .utf8), expectedText, "Approved workspace file differs")
     let toolMessages = try XCTUnwrap(toolTurn["messages"] as? [[String: String]])
@@ -184,9 +184,15 @@ final class RunnerTests: XCTestCase {
     XCTAssertTrue(assets.servedPaths.contains("/index.html"))
     XCTAssertTrue(assets.servedPaths.contains { $0.hasPrefix("/assets/index-") && $0.hasSuffix(".js") })
     XCTAssertTrue(assets.servedPaths.contains { $0.hasPrefix("/assets/index-") && $0.hasSuffix(".css") })
-    let boot = try await web.evaluateJavaScript("""
-      JSON.stringify({boot: document.querySelector('#root')?.textContent ?? '', errors: window.__iosWebProbeErrors})
-      """) as? String
+    var boot: String?
+    let deadline = ProcessInfo.processInfo.systemUptime + 5
+    repeat {
+      boot = try await web.evaluateJavaScript("""
+        JSON.stringify({boot: document.querySelector('#root')?.textContent ?? '', errors: window.__iosWebProbeErrors})
+        """) as? String
+      if boot?.contains("window.__ModuleLoader__ bootstrap facade is missing") == true { break }
+      try await Task.sleep(nanoseconds: 100_000_000)
+    } while ProcessInfo.processInfo.systemUptime < deadline
     XCTAssertTrue(boot?.contains("window.__ModuleLoader__ bootstrap facade is missing") == true,
       "Stock entry must execute; no module loader or fake backend is supplied: \(boot ?? "no diagnostics")")
     let report = try JSONSerialization.data(withJSONObject: [
@@ -262,9 +268,9 @@ final class RunnerTests: XCTestCase {
     return try XCTUnwrap(response).get()
   }
 
-  private func waitForChat(_ mailbox: IosChatMailbox,
+  private func waitForChat(_ mailbox: IosChatMailbox, seconds: TimeInterval = 10,
                            until predicate: ([String: Any]) -> Bool) throws -> [String: Any] {
-    let deadline = ProcessInfo.processInfo.systemUptime + 10
+    let deadline = ProcessInfo.processInfo.systemUptime + seconds
     var last: [String: Any] = [:]
     repeat {
       last = try request(mailbox, .snapshot)

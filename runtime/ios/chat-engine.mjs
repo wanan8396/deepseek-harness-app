@@ -212,7 +212,10 @@ export async function createChatEngine({ directory, apiKey, channel } = {}) {
     if (ctx.fiber.state !== 2 || rows.some(({ id }) => tree?.resolve(id)?.fiber?.state !== 2)) throw chatError(failure);
 
     const workspace = join(directory, 'Workspace');
-    await mkdir(workspace, { mode: 0o700 }).catch((error) => { if (error.code !== 'EEXIST') throw error; });
+    await mkdir(workspace, { recursive: true, mode: 0o700 }).catch((error) => {
+      if (error.code !== 'EEXIST') throw error;
+    });
+    await chmod(workspace, 0o700);
     const actions = new WeakMap();
     ctx.on('approval/request', (request, next) => {
       const action = actions.get(request.agent);

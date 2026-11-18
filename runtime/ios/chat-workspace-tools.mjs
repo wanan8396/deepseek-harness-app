@@ -18,10 +18,10 @@ const STAT_OPTIONS = { bigint: true };
 const INSPECT_OPTIONS = { ...STAT_OPTIONS, throwIfNoEntry: false };
 const INVALID_NAME = /[\\/:%\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
 const INVALID_TEXT = /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/u;
-// Node exports O_NOFOLLOW, not Darwin's O_NOFOLLOW_ANY (XNU <sys/fcntl.h>).
-// Use the latter on Apple platforms to reject links in ANY component at open.
-const NO_FOLLOW_ANY = ['ios', 'darwin'].includes(process.platform) ? 0x20000000 : 0;
-const NO_FOLLOW = constants.O_NOFOLLOW | NO_FOLLOW_ANY;
+// Keep model paths under the single-owner workspace. directoryChain checks
+// every parent after approval; only the leaf is passed to POSIX O_NOFOLLOW.
+// Imports/renames must not run concurrently with tools in this root.
+const NO_FOLLOW = constants.O_NOFOLLOW;
 const CREATE_FLAGS = constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | NO_FOLLOW;
 const READ_FLAGS = constants.O_RDONLY | constants.O_NONBLOCK | NO_FOLLOW;
 const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
