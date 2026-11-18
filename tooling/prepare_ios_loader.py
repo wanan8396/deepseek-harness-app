@@ -355,9 +355,9 @@ def prepare(seed: Path, destination: Path, check: bool = False, phase: str = 'lo
                  'chat-approval.mjs', 'chat-model-channel.mjs', 'chat-workspace-tools.mjs',
                  'sqlite-session-persistence.mjs'),
         'official-host-ci': ('official-host.mjs', 'official-host-ci-mailbox.mjs', 'sqlite-session-persistence.mjs',
-                             'core-fixture-model.mjs', 'official-app-services.mjs', 'official-app-routes.mjs', 'official-text-attachments.mjs', 'chat-model-channel.mjs',
+                             'core-fixture-model.mjs', 'official-app-services.mjs', 'official-app-routes.mjs', 'chat-model-channel.mjs',
                              'chat-deepseek-provider.mjs', 'chat-workspace-tools.mjs'),
-        'official-app': ('official-host.mjs', 'official-app-services.mjs', 'official-app-routes.mjs', 'official-text-attachments.mjs', 'official-app-mailbox.mjs',
+        'official-app': ('official-host.mjs', 'official-app-services.mjs', 'official-app-routes.mjs', 'official-app-mailbox.mjs',
                          'sqlite-session-persistence.mjs', 'chat-model-channel.mjs', 'chat-deepseek-provider.mjs',
                          'chat-workspace-tools.mjs'),
     }[phase]
