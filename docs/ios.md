@@ -42,8 +42,10 @@ macOS runner 仅是 Xcode 构建环境，产物目标仍为 iOS。未签名 IPA 
 
 ## 支持范围
 
+逐项证据和未交付项目见 [iOS 功能验收矩阵](ios-compatibility.md)。
+
 - 首个官方界面版本以文本为主，工具限于 App 私有工作区列目录、读文本和独占创建文件。创建前需要用户允许一次。附件上传、图片、第三方插件和官方桌面模型凭据页面尚未接入；模型通道由 App 原生设置，不将密钥交给 WebKit。
-- iPhone 16 Pro（iOS 18.5）模拟器分别验证了：WebKit 经 Swift 调用 App 内官方 Node Host，创建并列出两条会话、写入 SQLite；以及离线加载 20 个官方前端模块，渲染布局、侧栏和输入框。这两项均为测试入口的证据，不代表输入框已能发送消息或侧栏已能切换真实会话。这些较早的测试不等于新原生入口的完整模拟器验收。
+- [首个绿色官方界面构建 `46f70b0`](https://github.com/wanan8396/deepseek-harness-app/actions/runs/44298142976) 同时通过 iPhone 16 Pro（iOS 18.5）真实模拟器测试和 iPhone/iPad 设备包核验。测试入口通过 WebKit → Swift → App 内官方 Node Host 创建两条 SQLite 会话、接收标题更新，并点击官方侧栏切换两条会话。另有本机真实工具和一次性审批验证，使用模拟 HTTPS 响应；这不等于同一个生产 WebKit 输入框、审批卡片和物理设备已端到端验收。设备 IPA 打包 28 个固定版本的官方客户端模块，不包含 XCTest 夹具。
 - iOS 版本不等同于 Android Root／PRoot 或 Linux 环境，没有终端、Shell、桌面原生插件及对其他 App 文件的访问。
 - 聊天与存储在模拟器内验证；未用真机真实 API Key 验证付费接口，也未验证强制结束 App 后的恢复或持续后台运行。
 - 完整 profile 的 `node-addon-require-builtin` 与内部 ESM/CJS 入口仍需单独适配。最小相对路径 Loader 不挂载该路径，也没有替代 shim；Mac arm64 原生扩展不等于 iOS arm64 原生扩展。

@@ -6,7 +6,7 @@ This branch targets iOS phones and tablets, not a macOS desktop app. Android sta
 
 ## Current stage
 
-On iPhone and iPad, open the interim **On-device chat** screen and use the official DeepSeek endpoint or set a custom DeepSeek / OpenAI-compatible HTTPS endpoint, model ID and key. DSH's AgentLoop and SQLite run in the app process. Model inference uses the configured API and requires no computer, remote DSH or localhost bridge.
+On iPhone and iPad, open the native channel setup, then the bundled official chat, sidebar, model selector and approval UI. Choose a DeepSeek or OpenAI Chat compatible HTTPS endpoint, model ID and key. DSH's AgentLoop and SQLite run in the app process. Model inference uses the configured API; DSH needs no computer, remote engine or localhost bridge.
 
 - Runner targets both iPhone and iPad, minimum iOS 16.
 - `node_start()` runs inside an application-owned thread. It does not unpack Ubuntu, execute Linux binaries, use Root/PRoot, or depend on an external computer.
@@ -17,7 +17,7 @@ On iPhone and iPad, open the interim **On-device chat** screen and use the offic
 - Another tree mounts an App-owned SQLite backend through the official SessionPersistence contract and the official checkpoint policy. It verifies durable writes, same-session writer exclusion, independent reads, atomic rejection of invalid batches, rejection of damaged logs, and recovery of conversation history after closing and recreating DSH. This uses temporary files and an offline test model, not an app-kill recovery test.
 - Diagnostics and chat have separate status. Diagnostic `engineReady: false` does not indicate chat availability. Chat reports its own startup, streaming, cancellation and failure.
 - Swift and Node exchange bounded, atomically published requests in the app's private directory without opening a port. The API key is briefly held in a mode-`0600`, backup-excluded start request, unlinked before dispatch. It is not saved in chat history or preferences; stopping releases the runtime's key reference.
-- History is stored in the app's private SQLite database and reopened when starting again. The UI shows recent messages; older history remains available to the model context.
+- The official sidebar lists sessions by workspace. History lives in the app's private SQLite database. The old interim page uses a separate store; this build does not migrate its sessions.
 - iOS may suspend background applications. Continuous background execution is not claimed.
 
 ## Runtime provenance
@@ -43,7 +43,7 @@ The macOS runner supplies Xcode; the product target remains iOS. The unsigned IP
 ## Supported scope
 
 - The first official UI version is text-first with workspace list, read and exclusive file creation after one-time approval. File uploads, image attachments, third-party plugins and desktop credential management are excluded. API keys are entered natively.
-- Separate iPhone 16 Pro (iOS 18.5) simulator tests confirmed that WebKit can create and list two sessions through Swift and the embedded official Node Host, with SQLite present, and that the 20 offline official frontend modules render the layout, sidebar, and input box. The tests do not verify sending from that input or switching real sessions from the sidebar. These older tests do not establish end-to-end acceptance of the new native entry point.
+- [The first green official UI build (`46f70b0`)](https://github.com/wanan8396/deepseek-harness-app/actions/runs/44298142976) passed the iPhone 16 Pro (iOS 18.5) simulator and iPhone/iPad device bundle gates. The test entry created two SQLite sessions through WebKit, Swift and the in-app official Node Host, observed a title update, and switched between the sessions by clicking the official sidebar. A separate test verified in-app native tools and one-time approval with synthetic HTTPS responses. That does not certify the full production composer and approval UI on a physical device. The device IPA bundles 28 pinned official client modules and excludes XCTest fixtures.
 - iOS does not reproduce Android Root/PRoot or Linux. Terminal, shell, desktop native plugins and other apps' files are outside this port's supported capabilities.
 - Chat and persistence are checked in Simulator. The paid API has not been checked on a physical device with a live API key. Recovery after force-quitting and continuous background use are not verified.
 - Full profile resolution still needs separately adapted internal ESM/CJS access and `node-addon-require-builtin`. The relative-module Loader does not use that path or replace it with a shim. A macOS arm64 addon is not an iOS arm64 addon.
