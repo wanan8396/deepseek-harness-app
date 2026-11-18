@@ -244,23 +244,60 @@ final class RunnerTests: XCTestCase {
     add(attachment)
   }
 
-  /// Compile and ownership gate for the no-TCP page bridge. It checks only the
-  /// transport seam; the mock handler is not evidence that official RPCs work.
+  /// Exercise the genuine page script and WebKit message handler. The reply
+  /// is a Swift fixture, not a Node or official Host end-to-end result.
   @MainActor
-  func testOfficialWebBridgeSeamCompiles() async throws {
+  func testOfficialWebBridgeCarriesUnaryRequest() async throws {
     let script = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "official-web-bridge", withExtension: "js"))
+    var received: [IosOfficialWebBridge.HTTPRequest] = []
     let bridge = IosOfficialWebBridge.ciFixture(schemeHandler: IosOfficialWebAssets(),
-      documentStartScript: try String(contentsOf: script, encoding: .utf8)) { _, _ in
-      .response(IosOfficialWebBridge.HTTPResponse(status: 501))
+      documentStartScript: try String(contentsOf: script, encoding: .utf8)) { operation, _ in
+      switch operation {
+      case .request(let request): received.append(request)
+      }
+      return .response(IosOfficialWebBridge.HTTPResponse(status: 201,
+        headers: [.init(name: "content-type", value: "text/plain; charset=utf-8")], body: Data("收到🧪".utf8)))
     }
+    defer { bridge.invalidate() }
+    bridge.load()
+    let deadline = ProcessInfo.processInfo.systemUptime + 15
+    while !bridge.isReady && ProcessInfo.processInfo.systemUptime < deadline {
+      try await Task.sleep(for: .milliseconds(25))
+    }
+    XCTAssertTrue(bridge.isReady)
+    let raw = try await bridge.webView.callAsyncJavaScript("""
+      const fetch = window.__DSH_TRANSPORT__.fetch;
+      const response = await fetch('api/session/list?check=1', {
+        method: 'POST', headers: {'content-type': 'text/plain'}, body: '请求🧪',
+      });
+      let foreignBlocked = false;
+      try { await fetch('https://example.invalid/api/session/list'); } catch { foreignBlocked = true; }
+      return { status: response.status, text: await response.text(), foreignBlocked };
+      """, arguments: [:], in: nil, contentWorld: .page)
+    let value = try XCTUnwrap(raw as? [String: Any])
+    XCTAssertEqual(value["status"] as? Int, 201)
+    XCTAssertEqual(value["text"] as? String, "收到🧪")
+    XCTAssertEqual(value["foreignBlocked"] as? Bool, true)
+    XCTAssertEqual(received.count, 1)
+    let request = try XCTUnwrap(received.first)
+    XCTAssertEqual(request.method, "POST")
+    XCTAssertEqual(request.pathAndQuery, "/api/session/list?check=1")
+    XCTAssertEqual(request.body, Data("请求🧪".utf8))
+    bridge.invalidate()
+    let rejected = try await bridge.webView.callAsyncJavaScript("""
+      try { await window.__DSH_TRANSPORT__.fetch('api/session/list'); return false; }
+      catch { return true; }
+      """, arguments: [:], in: nil, contentWorld: .page)
+    XCTAssertEqual(rejected as? Bool, true)
+    XCTAssertEqual(received.count, 1)
     let report = try JSONSerialization.data(withJSONObject: [
-      "officialWebBridgeCompiled": true, "officialWebTransportVerified": false, "usesLocalTCP": false,
+      "webKitUnaryBridgeVerified": true, "crossOriginBlocked": true, "invalidatedPageBlocked": true,
+      "officialWebTransportVerified": false, "usesLocalTCP": false,
     ])
     let attachment = XCTAttachment(data: report, uniformTypeIdentifier: "public.json")
-    attachment.name = "official-web-bridge-not-yet-verified.json"
+    attachment.name = "official-web-unary-bridge-fixture.json"
     attachment.lifetime = .keepAlways
     add(attachment)
-    bridge.invalidate()
   }
 
   private func request(_ mailbox: IosChatMailbox, _ method: IosChatMailbox.Method,

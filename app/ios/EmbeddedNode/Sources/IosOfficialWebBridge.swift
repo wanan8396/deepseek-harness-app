@@ -36,7 +36,7 @@ public final class IosOfficialWebBridge: NSObject, WKScriptMessageHandlerWithRep
   private let handler: Handler
   private let onInvalidate: (UInt64) -> Void
   private var generation: UInt64 = 1
-  private var committed = false
+  public private(set) var isReady = false
 
   public init(assets: IosOfficialWebAssets, documentStartScript: String, handler: @escaping Handler,
               onInvalidate: @escaping (UInt64) -> Void = { _ in }) {
@@ -48,7 +48,8 @@ public final class IosOfficialWebBridge: NSObject, WKScriptMessageHandlerWithRep
     config.setURLSchemeHandler(assets, forURLScheme: IosOfficialWebAssets.scheme)
     config.userContentController.addUserScript(WKUserScript(
       source: documentStartScript, injectionTime: .atDocumentStart, forMainFrameOnly: true))
-    config.userContentController.addScriptMessageHandler(self, contentWorld: .page, name: "dshBridge")
+    config.userContentController.addScriptMessageHandler(
+      WeakMessageHandler(bridge: self), contentWorld: .page, name: "dshBridge")
     let web = WKWebView(frame: CGRect(x: 0, y: 0, width: 390, height: 844), configuration: config)
     web.navigationDelegate = self
     webView = web
@@ -66,8 +67,23 @@ public final class IosOfficialWebBridge: NSObject, WKScriptMessageHandlerWithRep
   public func invalidate() {
     let current = generation
     generation &+= 1
-    committed = false
+    isReady = false
     onInvalidate(current)
+  }
+
+  // WKUserContentController retains its handler; a weak proxy lets the App
+  // drop the entire page and its owner without a WebView/bridge retain cycle.
+  @MainActor
+  private final class WeakMessageHandler: NSObject, WKScriptMessageHandlerWithReply {
+    weak var bridge: IosOfficialWebBridge?
+    init(bridge: IosOfficialWebBridge) { self.bridge = bridge }
+
+    func userContentController(_ userContentController: WKUserContentController,
+                               didReceive message: WKScriptMessage,
+                               replyHandler: @escaping (Any?, String?) -> Void) {
+      guard let bridge else { replyHandler(nil, "IOS_WEB_TRANSPORT_INVALIDATED"); return }
+      bridge.userContentController(userContentController, didReceive: message, replyHandler: replyHandler)
+    }
   }
 
   public func userContentController(_ userContentController: WKUserContentController,
@@ -75,12 +91,17 @@ public final class IosOfficialWebBridge: NSObject, WKScriptMessageHandlerWithRep
                                     replyHandler: @escaping (Any?, String?) -> Void) {
     let current = generation
     Task { @MainActor in
-      guard message.name == "dshBridge", message.webView === webView, committed,
+      guard current == generation, message.name == "dshBridge", message.webView === webView,
+            isReady, message.frameInfo.isMainFrame,
+            message.frameInfo.request.url == IosOfficialWebAssets.bootstrapURL,
             webView.url == IosOfficialWebAssets.bootstrapURL,
             let body = message.body as? [String: Any], body["type"] as? String == "request",
             let method = body["method"] as? String, ["GET", "POST"].contains(method),
-            let path = body["path"] as? String, path.hasPrefix("/api/"), path.count <= 256,
-            !path.contains("\\") else {
+            let path = body["path"] as? String, path.utf8.count <= 256,
+            let parts = URLComponents(string: path), parts.scheme == nil, parts.host == nil,
+            parts.fragment == nil, parts.percentEncodedPath.hasPrefix("/api/"),
+            !parts.percentEncodedPath.contains("%"), !path.contains("\\"),
+            !parts.percentEncodedPath.split(separator: "/").contains(where: { $0 == "." || $0 == ".." }) else {
         replyHandler(nil, "IOS_WEB_TRANSPORT_BLOCKED")
         return
       }
@@ -120,11 +141,30 @@ public final class IosOfficialWebBridge: NSObject, WKScriptMessageHandlerWithRep
     }
   }
 
-  public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-    if webView.url == IosOfficialWebAssets.bootstrapURL { committed = true }
+  public func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
+                      decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+    let allowed = action.targetFrame?.isMainFrame == true
+      && action.request.url == IosOfficialWebAssets.bootstrapURL
+    decisionHandler(allowed ? .allow : .cancel)
+  }
+
+  public func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+    invalidate()
+  }
+
+  public func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+    isReady = webView.url == IosOfficialWebAssets.bootstrapURL
   }
 
   public func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-    committed = false
+    invalidate()
+  }
+
+  public func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+    invalidate()
+  }
+
+  public func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+    invalidate()
   }
 }
