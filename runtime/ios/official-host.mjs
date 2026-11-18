@@ -37,10 +37,14 @@ const ROWS = [
  * `stateDirectory` must be an absolute App-private directory; it holds the
  * official credential store and any service-private files.
  */
-export async function createOfficialHost({ seed, stateDirectory }) {
+export async function createOfficialHost({ seed, stateDirectory, clientPackages = [] }) {
   if (typeof seed !== 'string' || !isAbsolute(seed)) throw new TypeError('seed must be absolute');
   if (typeof stateDirectory !== 'string' || !isAbsolute(stateDirectory)) {
     throw new TypeError('stateDirectory must be absolute');
+  }
+  const extraPackages = [...new Set(clientPackages)].filter(pkg => !ROWS.some(([, name]) => name === pkg));
+  if (extraPackages.some(pkg => typeof pkg !== 'string' || !/^@deepseek-ai\/dsh-[a-z0-9-]+$/u.test(pkg))) {
+    throw new TypeError('invalid official Client package');
   }
   const root = resolve(seed);
   const state = resolve(stateDirectory);
@@ -54,7 +58,8 @@ export async function createOfficialHost({ seed, stateDirectory }) {
   // adapter beside the locked node_modules so its bare ESM imports resolve.
   const config = join(work, 'cordis.json');
   await writeFile(join(work, 'package.json'), '{}\n', { flag: 'wx' });
-  const rows = ROWS.map(([id, pkg, extra]) => {
+  const hostRows = [...ROWS, ...extraPackages.map(pkg => [pkg.slice('@deepseek-ai/dsh-'.length), pkg])];
+  const rows = hostRows.map(([id, pkg, extra]) => {
     const row = { id, name: pkg.startsWith('./') ? pathToFileURL(resolve(root, pkg)).href : entry(pkg) };
     if (id === 'credentials') {
       row.config = { path: join(state, '.credentials.yaml'), dshHome: state, watch: false };
@@ -76,6 +81,8 @@ export async function createOfficialHost({ seed, stateDirectory }) {
       row.config = { provider: 'ios-custom', model: 'deepseek-flash' };
     } else if (id === 'sessionController') {
       row.config = { nativeOpen: false };
+    } else if (pkg === '@deepseek-ai/dsh-api-workspace-controller') {
+      row.config = { documentsDirectory: state };
     } else if (extra !== undefined) {
       row.config = extra;
     }
@@ -128,6 +135,9 @@ export async function createOfficialHost({ seed, stateDirectory }) {
       }
       return shared.fetch(new Request(`http://bundle${url.pathname}${url.search}`, request), peer);
     },
+    // Used by the cloud exporter; no Web server needs to listen for this graph.
+    clientGraph() { return ctx.get('clientModules')?.graph(); },
+    clientBundle(request) { return ctx.get('clientModules')?.fetchBundle(request); },
     openStream(endpoint, payload, signal, uplink = emptyUplink()) {
       return gateway.wireStream.open(endpoint, payload, uplink, peer, signal);
     },

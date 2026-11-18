@@ -7,7 +7,8 @@ permissions:
   contents: read
 concurrency:
   group: ios-${{ github.ref }}
-  cancel-in-progress: true
+  # Keep running Simulator evidence when another verification commit lands.
+  cancel-in-progress: false
 jobs:
   loader:
     name: DSH Loader source and desktop prerequisites
@@ -55,6 +56,14 @@ jobs:
           python3 tooling/prepare_ios_loader.py --seed "$RUNNER_TEMP/dsh-ios-seed" --phase official-host-ci --output "$RUNNER_TEMP/dsh-ios-official-host-ci"
           node runtime/ios/test-official-host.mjs "$RUNNER_TEMP/dsh-ios-official-host-ci"
           tar -czf "$RUNNER_TEMP/dsh-ios-official-host-ci.tar.gz" -C "$RUNNER_TEMP/dsh-ios-official-host-ci" .
+      - name: Export the lock-pinned official sidebar and composer preview
+        run: node runtime/ios/export-web-shell-preview.mjs "$RUNNER_TEMP/dsh-ios-seed" "$RUNNER_TEMP/dsh-ios-web-shell-preview" "$RUNNER_TEMP/dsh-ios-official-host-ci"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: ios-official-web-shell-preview
+          path: ${{ runner.temp }}/dsh-ios-web-shell-preview/
+          if-no-files-found: error
+          retention-days: 7
       - name: Export exact tested runtime bundles for the iOS job
         run: |
           for phase in loader core persistence chat; do
