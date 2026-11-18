@@ -6,6 +6,11 @@ import { pathToFileURL } from 'node:url';
 // a shared fetch handler. No webServer row exists, so nothing binds a port.
 const ROWS = [
   ['sessions', '@deepseek-ai/dsh-session'],
+  ['sessionPersistence', './sqlite-session-persistence.mjs'],
+  ['storage', '@deepseek-ai/dsh-storage'],
+  ['storageJson', '@deepseek-ai/dsh-storage-json'],
+  ['storageDomain', '@deepseek-ai/dsh-storage-domain'],
+  ['commands', '@deepseek-ai/dsh-commands'],
   ['sessionProjections', '@deepseek-ai/dsh-session-projection'],
   ['sessionQuery', '@deepseek-ai/dsh-session-query-sqlite', { path: ':memory:', openAt: 'never' }],
   ['systemPrompt', '@deepseek-ai/dsh-system-prompt'],
@@ -43,22 +48,37 @@ export async function createOfficialHost({ seed, stateDirectory }) {
   await chmod(state, 0o700);
   const work = await mkdtemp(join(state, '.host-'));
   await chmod(work, 0o700);
-  const entry = (pkg) => pathToFileURL(join(root, 'node_modules', pkg, 'lib/index.js')).href;
+  const entry = (pkg) => pkg.startsWith('./')
+    ? new URL(pkg, import.meta.url).href
+    : pathToFileURL(join(root, 'node_modules', pkg, 'lib/index.js')).href;
   // Official rows resolve their own package dependencies, so the config lives
   // beside the seed rather than inside the App-private data directory.
   const config = join(work, 'cordis.json');
   await writeFile(join(work, 'package.json'), '{}\n', { flag: 'wx' });
-  const rows = ROWS.map(([id, pkg, config]) => {
+  const rows = ROWS.map(([id, pkg, extra]) => {
     const row = { id, name: entry(pkg) };
-    if (id === 'credentials' || id === 'attachments') {
+    if (id === 'credentials') {
       row.config = { path: join(state, '.credentials.yaml'), dshHome: state, watch: false };
-      if (id === 'attachments') row.config = { dshHome: state };
-    } else if (id === 'fs' || id === 'workspace') {
+    } else if (id === 'attachments') {
+      row.config = { dshHome: state };
+    } else if (id === 'fs') {
       row.config = { root: state };
+    } else if (id === 'workspace') {
+      row.config = { root: state };
+    } else if (id === 'sessionPersistence') {
+      row.config = { directory: join(state, 'sessions') };
+    } else if (id === 'storageJson') {
+      row.config = { root: join(state, 'storage') };
+    } else if (id === 'storageDomain') {
+      row.config = { backend: 'json' };
+    } else if (id === 'agentDefaultModel') {
+      // The stock frontend picks a route from its own Models page; this default
+      // only satisfies the service contract so the session API can mount.
+      row.config = { provider: 'ios-custom', model: 'deepseek-flash' };
     } else if (id === 'sessionController') {
       row.config = { nativeOpen: false };
-    } else if (config !== undefined) {
-      row.config = config;
+    } else if (extra !== undefined) {
+      row.config = extra;
     }
     return row;
   });
