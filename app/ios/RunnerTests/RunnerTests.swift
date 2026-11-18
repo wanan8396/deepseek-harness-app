@@ -137,10 +137,11 @@ final class RunnerTests: XCTestCase {
     let id = try XCTUnwrap(approval["id"] as? String)
     _ = try request(mailbox, .answerApproval, params: ["id": id, "allowed": true])
     let toolTurn = try waitForChat(mailbox) { $0["state"] as? String == "ready" }
-    XCTAssertTrue(toolTurn["errorCode"] is NSNull)
-    XCTAssertEqual(try String(contentsOf: file, encoding: .utf8), expectedText)
+    XCTAssertTrue(toolTurn["errorCode"] is NSNull, "Tool turn error: \(toolTurn["errorCode"] ?? "missing")")
+    XCTAssertEqual(try String(contentsOf: file, encoding: .utf8), expectedText, "Approved workspace file differs")
     let toolMessages = try XCTUnwrap(toolTurn["messages"] as? [[String: String]])
-    XCTAssertTrue(toolMessages.contains { $0["role"] == "assistant" && $0["text"] == "ci-workspace-tools-complete" })
+    XCTAssertTrue(toolMessages.contains { $0["role"] == "assistant" && $0["text"] == "ci-workspace-tools-complete" },
+      "Model did not complete the workspace tool sequence: \(toolMessages)")
     let decoded = try toolMessages.filter { $0["role"] == "tool" }.compactMap { message -> [String: Any]? in
       guard let text = message["text"] else { return nil }
       return try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any]
@@ -180,9 +181,9 @@ final class RunnerTests: XCTestCase {
     await fulfillment(of: [navigation.loaded], timeout: 15)
     XCTAssertNil(navigation.error)
     XCTAssertEqual(web.url, IosOfficialWebAssets.startURL)
-    XCTAssertTrue(assets.servedPaths.contains("index.html"))
-    XCTAssertTrue(assets.servedPaths.contains { $0.hasPrefix("assets/index-") && $0.hasSuffix(".js") })
-    XCTAssertTrue(assets.servedPaths.contains { $0.hasPrefix("assets/index-") && $0.hasSuffix(".css") })
+    XCTAssertTrue(assets.servedPaths.contains("/index.html"))
+    XCTAssertTrue(assets.servedPaths.contains { $0.hasPrefix("/assets/index-") && $0.hasSuffix(".js") })
+    XCTAssertTrue(assets.servedPaths.contains { $0.hasPrefix("/assets/index-") && $0.hasSuffix(".css") })
     let boot = try await web.evaluateJavaScript("""
       JSON.stringify({boot: document.querySelector('#root')?.textContent ?? '', errors: window.__iosWebProbeErrors})
       """) as? String
@@ -194,6 +195,45 @@ final class RunnerTests: XCTestCase {
     ])
     let attachment = XCTAttachment(data: report, uniformTypeIdentifier: "public.json")
     attachment.name = "official-web-assets-only.json"
+    attachment.lifetime = .keepAlways
+    add(attachment)
+  }
+
+  @MainActor
+  func testOfficialModuleBootstrapInWebKit() async throws {
+    let assets = IosOfficialWebAssets()
+    let config = WKWebViewConfiguration()
+    config.websiteDataStore = .nonPersistent()
+    config.setURLSchemeHandler(assets, forURLScheme: IosOfficialWebAssets.scheme)
+    let web = WKWebView(frame: CGRect(x: 0, y: 0, width: 390, height: 844), configuration: config)
+    let navigation = WebAssetNavigation(expectation(description: "Generated official bootstrap document"))
+    web.navigationDelegate = navigation
+    web.load(URLRequest(url: IosOfficialWebAssets.bootstrapURL))
+    await fulfillment(of: [navigation.loaded], timeout: 15)
+    XCTAssertNil(navigation.error)
+    XCTAssertEqual(web.url, IosOfficialWebAssets.bootstrapURL)
+    XCTAssertTrue(assets.servedPaths.contains("/"))
+    let observed = try await web.evaluateJavaScript("""
+      JSON.stringify({mode: globalThis.__ModuleLoader__?.mode,
+        release: globalThis.__DSH_BOOT__?.release, entries: globalThis.__DSH_BOOT__?.entries?.map(x=>x.id),
+        bootVisible: document.querySelector('#root [data-dsh-boot]') !== null,
+        composerVisible: document.querySelector('#root [data-composer-input]') !== null})
+      """) as? String
+    let text = try XCTUnwrap(observed)
+    let state = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any])
+    XCTAssertEqual(state["mode"] as? String, "live", text)
+    XCTAssertEqual(state["entries"] as? [String], ["@deepseek-ai/dsh-client-modules"], text)
+    XCTAssertEqual((state["release"] as? [String: String])?["version"], "0.2.2-rc.3", text)
+    XCTAssertEqual(state["bootVisible"] as? Bool, true, text)
+    XCTAssertEqual(state["composerVisible"] as? Bool, false, text)
+    XCTAssertTrue(assets.servedPaths.contains { $0.hasPrefix("/plugins/??@deepseek-ai/dsh-client-modules/client.js&rev=") },
+      "WebKit did not fetch the official combo route")
+    let report = try JSONSerialization.data(withJSONObject: [
+      "officialModuleBootstrapVerified": state["mode"] as? String == "live",
+      "officialUIReady": false, "usesLocalTCP": false, "stage": "singleton-module-loader",
+    ])
+    let attachment = XCTAttachment(data: report, uniformTypeIdentifier: "public.json")
+    attachment.name = "official-web-module-bootstrap.json"
     attachment.lifetime = .keepAlways
     add(attachment)
   }

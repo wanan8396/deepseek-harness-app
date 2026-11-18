@@ -47,6 +47,9 @@ jobs:
         run: |
           python3 tooling/prepare_ios_web.py --seed "$RUNNER_TEMP/dsh-ios-seed" --output "$RUNNER_TEMP/dsh-ios-web-frontend"
           tar -czf "$RUNNER_TEMP/dsh-ios-web-frontend.tar.gz" -C "$RUNNER_TEMP/dsh-ios-web-frontend" .
+          node runtime/ios/export-web-bootstrap.mjs --seed "$RUNNER_TEMP/dsh-ios-seed" --output "$RUNNER_TEMP/dsh-ios-web-bootstrap"
+          node runtime/ios/test-web-bootstrap.mjs "$RUNNER_TEMP/dsh-ios-seed" "$RUNNER_TEMP/dsh-ios-web-bootstrap"
+          tar -czf "$RUNNER_TEMP/dsh-ios-web-bootstrap.tar.gz" -C "$RUNNER_TEMP/dsh-ios-web-bootstrap" .
       - name: Export exact tested runtime bundles for the iOS job
         run: |
           for phase in loader core persistence chat; do
@@ -61,6 +64,7 @@ jobs:
             ${{ runner.temp }}/dsh-ios-persistence.tar.gz
             ${{ runner.temp }}/dsh-ios-chat.tar.gz
             ${{ runner.temp }}/dsh-ios-web-frontend.tar.gz
+            ${{ runner.temp }}/dsh-ios-web-bootstrap.tar.gz
           retention-days: 7
   ios:
     needs: loader
@@ -111,9 +115,11 @@ jobs:
             mkdir -p "$destination"
             tar -xzf "$RUNNER_TEMP/ios-loader-input/dsh-ios-$phase.tar.gz" -C "$destination"
           done
-          web="app/ios/EmbeddedNode/Resources/dsh-web-frontend"
-          mkdir -p "$web"
-          tar -xzf "$RUNNER_TEMP/ios-loader-input/dsh-ios-web-frontend.tar.gz" -C "$web"
+          for phase in web-frontend web-bootstrap; do
+            web="app/ios/EmbeddedNode/Resources/dsh-$phase"
+            mkdir -p "$web"
+            tar -xzf "$RUNNER_TEMP/ios-loader-input/dsh-ios-$phase.tar.gz" -C "$web"
+          done
       - name: Analyze application
         working-directory: app
         run: flutter analyze --no-pub

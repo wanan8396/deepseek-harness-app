@@ -61,6 +61,18 @@ def main():
         assert hashlib.sha256(item.read_bytes()).hexdigest() == entry['sha256']
         expected.add(entry['path'])
     assert {file.relative_to(frontend).as_posix() for file in frontend.rglob('*') if file.is_file()} == expected
+    bootstrap = framework / 'dsh-web-bootstrap'
+    startup = json.loads((bootstrap / 'distribution-manifest.json').read_bytes())
+    assert startup['schemaVersion'] == 1 and startup['package'] == '@deepseek-ai/dsh-client-modules'
+    assert startup['version'] == web['version'] and startup['sourceLockSHA256'] == web['sourceLockSHA256']
+    assert startup['integrity'] == json.loads(lock_bytes)['packages']['node_modules/@deepseek-ai/dsh-client-modules']['integrity']
+    assert startup['stockIndexSHA256'] == hashlib.sha256((frontend / 'index.html').read_bytes()).hexdigest()
+    assert startup['index']['path'] == 'index.html' and startup['license']['path'] == 'LICENSE'
+    assert {entry['path'] for entry in startup['resources']} == {'bootstrap-combo.js', 'bootstrap-entry.js'}
+    for entry in [startup['index'], startup['license'], *startup['resources']]:
+        item = bootstrap / entry['path']
+        assert item.is_file() and not item.is_symlink() and item.stat().st_size == entry['bytes']
+        assert hashlib.sha256(item.read_bytes()).hexdigest() == entry['sha256']
     bridge = app / 'Frameworks/DshEmbeddedNode.framework/DshEmbeddedNode'
     assert bridge.is_file(), 'Embedded runtime bridge framework missing'
     deps = subprocess.check_output(['otool', '-L', str(bridge)], text=True)
