@@ -65,7 +65,10 @@ public final class IosOfficialWebAssets: NSObject, WKURLSchemeHandler {
           size == data.count,
           let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: [
             "Content-Type": mime, "Cache-Control": "no-store", "Access-Control-Allow-Origin": "*",
-            "Content-Security-Policy": "default-src 'none'; script-src dsh-app:; style-src dsh-app: 'unsafe-inline'; font-src dsh-app:; img-src dsh-app: data:; manifest-src dsh-app:; connect-src 'none'",
+            // The pinned Cordis Loader uses Function at module initialization.
+            // Scripts still come only from this immutable manifest; no inline,
+            // external script, connection, child frame, or remote navigation is enabled here.
+            "Content-Security-Policy": "default-src 'none'; script-src dsh-app: 'unsafe-eval'; style-src dsh-app: 'unsafe-inline'; font-src dsh-app:; img-src dsh-app: data:; manifest-src dsh-app:; connect-src 'none'; form-action 'none'; base-uri 'none'",
           ]) else {
       urlSchemeTask.didFailWithError(URLError(.fileDoesNotExist))
       return
