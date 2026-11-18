@@ -39,9 +39,13 @@ jobs:
         run: |
           python3 tooling/prepare_ios_loader.py --seed "$RUNNER_TEMP/dsh-ios-seed" --phase persistence --output "$RUNNER_TEMP/dsh-ios-persistence"
           node runtime/ios/test-persistence.mjs "$RUNNER_TEMP/dsh-ios-persistence"
+      - name: Test production text chat with the official adapter and simulated HTTPS response
+        run: |
+          python3 tooling/prepare_ios_loader.py --seed "$RUNNER_TEMP/dsh-ios-seed" --phase chat --output "$RUNNER_TEMP/dsh-ios-chat"
+          node runtime/ios/test-chat.mjs "$RUNNER_TEMP/dsh-ios-chat"
       - name: Export exact tested runtime bundles for the iOS job
         run: |
-          for phase in loader core persistence; do
+          for phase in loader core persistence chat; do
             tar -czf "$RUNNER_TEMP/dsh-ios-$phase.tar.gz" -C "$RUNNER_TEMP/dsh-ios-$phase" .
           done
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
@@ -51,6 +55,7 @@ jobs:
             ${{ runner.temp }}/dsh-ios-loader.tar.gz
             ${{ runner.temp }}/dsh-ios-core.tar.gz
             ${{ runner.temp }}/dsh-ios-persistence.tar.gz
+            ${{ runner.temp }}/dsh-ios-chat.tar.gz
           retention-days: 7
   ios:
     needs: loader
@@ -96,7 +101,7 @@ jobs:
           path: ${{ runner.temp }}/ios-loader-input
       - name: Stage the exact tested DSH bundles in native resources
         run: |
-          for phase in loader core persistence; do
+          for phase in loader core persistence chat; do
             destination="app/ios/EmbeddedNode/Resources/dsh-$phase"
             mkdir -p "$destination"
             tar -xzf "$RUNNER_TEMP/ios-loader-input/dsh-ios-$phase.tar.gz" -C "$destination"

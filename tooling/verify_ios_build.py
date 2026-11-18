@@ -29,9 +29,13 @@ def main():
     root = Path(__file__).resolve().parents[1]
     for name in ['probe.cjs', 'meta-probe.mjs', 'requirements.json', 'NodeMobile-LICENSE.txt']:
         assert (app / 'Frameworks/DshEmbeddedNode.framework' / name).read_bytes() == (root / 'runtime/ios' / name).read_bytes(), name
+    framework = app / 'Frameworks/DshEmbeddedNode.framework'
+    assert not (framework / 'chat-ci-entry.cjs').exists(), 'CI fixture entered shipped resources'
+    assert not (framework / 'chat-ci-fixture.mjs').exists(), 'CI fixture entered shipped resources'
     for directory, distribution in [('dsh-loader', 'ios-adapted-loader-probe'),
                                     ('dsh-core', 'ios-adapted-core-probe'),
-                                    ('dsh-persistence', 'ios-adapted-persistence-probe')]:
+                                    ('dsh-persistence', 'ios-adapted-persistence-probe'),
+                                    ('dsh-chat', 'ios-local-text-chat')]:
         bundle = app / 'Frameworks/DshEmbeddedNode.framework' / directory
         manifest = json.loads((bundle / 'distribution-manifest.json').read_text())
         assert manifest['distribution'] == distribution

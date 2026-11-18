@@ -104,6 +104,14 @@ async function main(reportPath) {
   setInterval(() => {}, 60_000);
   try {
     if (!reportPath || !path.isAbsolute(reportPath)) throw new Error('REPORT_PATH_INVALID');
+    const chatRoot = path.join(__dirname, 'dsh-chat');
+    if (fs.existsSync(chatRoot)) {
+      // Do not block the legacy probes on loading the chat module. The bridge
+      // has a bounded timeout if a corrupt install cannot open the mailbox.
+      void import(pathToFileURL(path.join(chatRoot, 'chat-mailbox.mjs')).href)
+        .then(({ startChatMailbox }) => startChatMailbox(reportPath))
+        .catch(() => console.error('IOS_CHAT_UNAVAILABLE'));
+    }
     const report = await collectReport(reportPath);
     const loaderRoot = path.join(__dirname, 'dsh-loader');
     if (fs.existsSync(loaderRoot)) {
@@ -150,5 +158,5 @@ async function main(reportPath) {
   }
 }
 
-module.exports = { satisfiesFloor, compatibility, atomicReport, collectReport };
+module.exports = { satisfiesFloor, compatibility, atomicReport, collectReport, main };
 if (require.main === module) void main(process.argv[2]);

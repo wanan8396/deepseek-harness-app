@@ -19,7 +19,9 @@ LOCK = ROOT / 'runtime/locks/dsh-0.2.2-rc.3/package-lock.json'
 DEFAULT_OUTPUT = ROOT / 'app/ios/EmbeddedNode/Resources/dsh-loader'
 DEFAULT_CORE_OUTPUT = DEFAULT_OUTPUT.with_name('dsh-core')
 DEFAULT_PERSISTENCE_OUTPUT = DEFAULT_OUTPUT.with_name('dsh-persistence')
+DEFAULT_CHAT_OUTPUT = DEFAULT_OUTPUT.with_name('dsh-chat')
 CHECKPOINT_PACKAGE = '@deepseek-ai/dsh-session-checkpoint-policy'
+CHAT_PROVIDER_PACKAGE = '@deepseek-ai/dsh-llm-deepseek'
 ENTRY_PACKAGE = '@deepseek-ai/dsh-app-boot'
 CORE_ENTRY_PACKAGES = (
     '@deepseek-ai/dsh-session-projection', '@deepseek-ai/dsh-session',
@@ -55,6 +57,13 @@ CORE_REVIEWED_PACKAGES = REVIEWED_PACKAGES | frozenset({
     '@deepseek-ai/dsh-typert-protocol', '@deepseek-ai/dsh-user-approval',
     '@deepseek-ai/dsh-util-crypto', '@deepseek-ai/dsh-util-values',
     '@deepseek-ai/dsh-workspace', 'zod',
+})
+# Official Messages adapter, SSE parser, and manifest dependencies. The App mounts
+# only its text adapter; attachment, sandbox and filesystem plugin services are not mounted.
+CHAT_REVIEWED_PACKAGES = frozenset({
+    CHAT_PROVIDER_PACKAGE, 'eventsource-parser', '@deepseek-ai/dsh-attachment',
+    '@deepseek-ai/dsh-anonymous-user-id', '@deepseek-ai/dsh-deepseek-llm-api-extensions',
+    '@deepseek-ai/dsh-fs', '@deepseek-ai/dsh-fs-patch', '@deepseek-ai/dsh-sandbox',
 })
 EXCLUDED = {
     'node-addon-require-builtin': (
@@ -130,8 +139,9 @@ def phase_entry_packages(phase: str) -> tuple[str, ...]:
         return (ENTRY_PACKAGE,)
     if phase == 'core':
         return (ENTRY_PACKAGE, *CORE_ENTRY_PACKAGES)
-    if phase == 'persistence':
-        return (ENTRY_PACKAGE, *CORE_ENTRY_PACKAGES, CHECKPOINT_PACKAGE)
+    if phase in ('persistence', 'chat'):
+        entries = (ENTRY_PACKAGE, *CORE_ENTRY_PACKAGES, CHECKPOINT_PACKAGE)
+        return (*entries, CHAT_PROVIDER_PACKAGE) if phase == 'chat' else entries
     raise ExportError('EXPORT_PHASE_INVALID')
 
 
@@ -140,8 +150,10 @@ def dependency_closure(seed: Path, lock: dict, phase: str = 'loader') -> tuple[d
     omitted = []
     queue = [(None, name) for name in phase_entry_packages(phase)]
     reviewed = REVIEWED_PACKAGES if phase == 'loader' else CORE_REVIEWED_PACKAGES
-    if phase == 'persistence':
+    if phase in ('persistence', 'chat'):
         reviewed = reviewed | {CHECKPOINT_PACKAGE}
+    if phase == 'chat':
+        reviewed = reviewed | CHAT_REVIEWED_PACKAGES
     while queue:
         parent, name = queue.pop(0)
         if name in EXCLUDED:
@@ -283,6 +295,8 @@ def prepare(seed: Path, destination: Path, check: bool = False, phase: str = 'lo
         'loader': ('loader-probe.mjs', 'loader-fixture.mjs'),
         'core': ('core-probe.mjs', 'core-fixture-model.mjs'),
         'persistence': ('persistence-probe.mjs', 'sqlite-session-persistence.mjs', 'core-fixture-model.mjs'),
+        'chat': ('chat-engine.mjs', 'chat-deepseek-provider.mjs', 'chat-mailbox.mjs',
+                 'sqlite-session-persistence.mjs'),
     }[phase]
     own_files = [ROOT / 'runtime/ios' / name for name in own_names]
     for source in own_files:
@@ -297,7 +311,8 @@ def prepare(seed: Path, destination: Path, check: bool = False, phase: str = 'lo
                       or key.split('node_modules/')[-1].startswith((
                           'node-addon-require-builtin', 'node-addon-native-custom-loader'))]
     manifest = {
-        'schemaVersion': 1, 'distribution': f'ios-adapted-{phase}-probe', 'engineVersion': '0.2.2-rc.3',
+        'schemaVersion': 1, 'engineVersion': '0.2.2-rc.3',
+        'distribution': 'ios-local-text-chat' if phase == 'chat' else f'ios-adapted-{phase}-probe',
         'sourceLockSHA256': sha256(lock_bytes),
         'integrityVerification': 'Seed must be created by npm ci --ignore-scripts; exporter verifies exact lock and package identities, then hashes output files',
         'entryPackage': ENTRY_PACKAGE, 'engineReady': False,
@@ -305,6 +320,7 @@ def prepare(seed: Path, destination: Path, check: bool = False, phase: str = 'lo
             'loader': ['agents', 'models'],
             'core': ['web-profile', 'model-provider-network', 'concrete-session-persistence'],
             'persistence': ['web-profile', 'model-provider-network', 'official-jsonl-storage', 'chat-transport'],
+            'chat': ['web-profile', 'official-jsonl-storage', 'user-tools', 'attachments', 'remote-engine'],
         }[phase],
         'packages': [{'path': key, 'name': value[1]['name'], 'version': value[0]['version'],
                       'resolved': value[0]['resolved'], 'integrity': value[0]['integrity'],
@@ -344,12 +360,13 @@ def prepare(seed: Path, destination: Path, check: bool = False, phase: str = 'lo
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--seed', type=Path, required=True, help='Independent exact-lock npm ci seed')
-    parser.add_argument('--phase', choices=('loader', 'core', 'persistence'), default='loader')
+    parser.add_argument('--phase', choices=('loader', 'core', 'persistence', 'chat'), default='loader')
     parser.add_argument('--output', type=Path, help='Defaults to the phase-specific dsh-* resources directory')
     parser.add_argument('--check', action='store_true', help='Inspect seed and hashes only; write nothing')
     args = parser.parse_args(argv)
     output = args.output if args.output is not None else {
         'loader': DEFAULT_OUTPUT, 'core': DEFAULT_CORE_OUTPUT, 'persistence': DEFAULT_PERSISTENCE_OUTPUT,
+        'chat': DEFAULT_CHAT_OUTPUT,
     }[args.phase]
     try:
         manifest = prepare(args.seed, output, args.check, args.phase)
