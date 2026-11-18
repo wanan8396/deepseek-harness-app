@@ -8,6 +8,7 @@ const ROWS = [
   ['credentials', '@deepseek-ai/dsh-credentials-local'],
   ['connection', '@deepseek-ai/dsh-client-connection'],
   ['typert', '@deepseek-ai/dsh-typert-registry'],
+  ['remoteAccess', '@deepseek-ai/dsh-api-remote-access'],
   ['gateway', '@deepseek-ai/dsh-api-gateway'],
 ];
 
