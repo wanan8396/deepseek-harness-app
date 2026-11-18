@@ -251,7 +251,7 @@ final class RunnerTests: XCTestCase {
     let script = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "official-web-bridge", withExtension: "js"))
     let bridge = IosOfficialWebBridge.ciFixture(schemeHandler: IosOfficialWebAssets(),
       documentStartScript: try String(contentsOf: script, encoding: .utf8)) { _, _ in
-      .response(HTTPResponse(status: 501))
+      .response(IosOfficialWebBridge.HTTPResponse(status: 501))
     }
     let report = try JSONSerialization.data(withJSONObject: [
       "officialWebBridgeCompiled": true, "officialWebTransportVerified": false, "usesLocalTCP": false,
