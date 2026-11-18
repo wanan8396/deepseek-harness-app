@@ -12,6 +12,12 @@ public final class IosLocalEnginePlugin: NSObject, FlutterPlugin {
   private var chatMailbox: IosChatMailbox?
   private var officialMailbox: IosOfficialAppMailbox?
   private weak var officialModal: UINavigationController?
+  private var flutterGeneration: UUID?
+  private var flutterReady = false
+  private var flutterStopping = false
+  // Reserve the legacy owner before dispatching its asynchronous startup so
+  // two Flutter engines or the diagnostic WebKit surface cannot race it.
+  private var legacyOwnsChat = false
   private var nodeRunning = false
   private var state = "idle"
   private var reason: String?
@@ -39,7 +45,11 @@ public final class IosLocalEnginePlugin: NSObject, FlutterPlugin {
     case "startProbe":
       ensureNodeStarted()
       result(snapshot())
-    case "startChat": handleChat(.start, call.arguments, result: result)
+    case "startChat":
+      if flutterGeneration != nil || flutterStopping || officialModal != nil {
+        result(Self.chatError("IOS_OFFICIAL_BUSY")); return
+      }
+      handleChat(.start, call.arguments, result: result)
     case "chatSnapshot": handleChat(.snapshot, call.arguments, result: result)
     case "chatSend": handleChat(.send, call.arguments, result: result)
     case "chatCancel": handleChat(.cancel, call.arguments, result: result)
@@ -47,7 +57,93 @@ public final class IosLocalEnginePlugin: NSObject, FlutterPlugin {
     case "chatAnswerApproval": handleChat(.answerApproval, call.arguments, result: result)
     case "openOfficialChat":
       DispatchQueue.main.async { self.openOfficialChat(call.arguments, result: result) }
+    case "startOfficialRuntime", "callOfficialRuntime", "stopOfficialRuntime":
+      Task { @MainActor in await self.handleOfficialRuntime(call, result: result) }
     default: result(FlutterMethodNotImplemented)
+    }
+  }
+
+  @MainActor
+  private func ownedMailbox() throws -> IosOfficialAppMailbox {
+    let resources = Bundle(for: DshEmbeddedNode.self)
+    guard resources.url(forResource: "official-app-mailbox", withExtension: "mjs", subdirectory: "dsh-official-app") != nil
+      else { throw IosOfficialAppMailbox.Failure.unavailable }
+    ensureNodeStarted()
+    guard nodeRunning, let reportURL else { throw IosOfficialAppMailbox.Failure.unavailable }
+    if let officialMailbox { return officialMailbox }
+    let mailbox = try IosOfficialAppMailbox(reportURL: reportURL, runtimeIsRunning: { [weak self] in self?.nodeRunning == true })
+    officialMailbox = mailbox
+    return mailbox
+  }
+
+  @MainActor
+  private func handleOfficialRuntime(_ call: FlutterMethodCall, result: @escaping FlutterResult) async {
+    guard let args = call.arguments as? [String: Any] else {
+      result(Self.chatError("IOS_OFFICIAL_INVALID_REQUEST")); return
+    }
+    do {
+      switch call.method {
+      case "startOfficialRuntime":
+        guard Set(args.keys) == ["apiKey", "protocol", "baseUrl", "modelId"],
+              let apiKey = args["apiKey"] as? String, let mode = args["protocol"] as? String,
+              let baseURL = args["baseUrl"] as? String, let model = args["modelId"] as? String
+          else { throw IosOfficialAppMailbox.Failure.invalidFrame }
+        guard officialModal == nil, flutterGeneration == nil, !flutterStopping, !legacyOwnsChat
+          else { throw IosOfficialAppMailbox.Failure.busy }
+        let setup = try IosOfficialAppMailbox.Setup(apiKey: apiKey, channelProtocol: mode, baseURL: baseURL, modelID: model)
+        let mailbox = try ownedMailbox()
+        let ticket = try mailbox.begin(setup)
+        flutterGeneration = ticket
+        do {
+          try await mailbox.waitUntilReady(ticket)
+          guard flutterGeneration == ticket else { throw CancellationError() }
+          flutterReady = true
+          result(ticket.uuidString.lowercased())
+        } catch {
+          flutterReady = false
+          flutterStopping = true
+          flutterGeneration = nil
+          try? await mailbox.stop()
+          flutterStopping = false
+          throw error
+        }
+      case "callOfficialRuntime":
+        guard Set(args.keys) == ["generation", "path", "body"],
+              let ticket = args["generation"] as? String, let path = args["path"] as? String,
+              let body = args["body"] as? String else { throw IosOfficialAppMailbox.Failure.invalidFrame }
+        guard let generation = flutterGeneration, generation.uuidString.lowercased() == ticket,
+              flutterReady, !flutterStopping, let mailbox = officialMailbox else { throw CancellationError() }
+        let reply = try await mailbox.request(path: path, body: body, generation: generation)
+        result(["status": reply.status, "body": reply.body])
+      case "stopOfficialRuntime":
+        guard Set(args.keys) == ["generation"], let ticket = args["generation"] as? String
+          else { throw IosOfficialAppMailbox.Failure.invalidFrame }
+        guard let generation = flutterGeneration, generation.uuidString.lowercased() == ticket,
+              !flutterStopping, let mailbox = officialMailbox else { throw CancellationError() }
+        flutterReady = false
+        flutterStopping = true
+        defer { flutterStopping = false }
+        try await mailbox.stop()
+        flutterGeneration = nil
+        result(nil)
+      default: result(FlutterMethodNotImplemented)
+      }
+    } catch is CancellationError {
+      result(Self.chatError("IOS_OFFICIAL_GENERATION_STALE"))
+    } catch let failure as IosOfficialAppMailbox.Failure {
+      let code: String
+      switch failure {
+      case .key: code = "IOS_CHAT_KEY_INVALID"
+      case .channel: code = "IOS_CHAT_CHANNEL_INVALID"
+      case .workspace: code = "IOS_OFFICIAL_WORKSPACE_UNAVAILABLE"
+      case .busy: code = "IOS_OFFICIAL_BUSY"
+      case .timeout: code = "IOS_OFFICIAL_TIMEOUT"
+      case .invalidFrame: code = "IOS_OFFICIAL_INVALID_REQUEST"
+      case .page, .unavailable: code = "IOS_OFFICIAL_UNAVAILABLE"
+      }
+      result(Self.chatError(code))
+    } catch {
+      result(Self.chatError("IOS_OFFICIAL_UNAVAILABLE"))
     }
   }
 
@@ -55,6 +151,9 @@ public final class IosLocalEnginePlugin: NSObject, FlutterPlugin {
   private func openOfficialChat(_ arguments: Any?, result: @escaping FlutterResult) {
     guard arguments == nil || arguments is NSNull else {
       result(Self.chatError("IOS_OFFICIAL_INVALID_REQUEST")); return
+    }
+    guard flutterGeneration == nil, !flutterStopping, !legacyOwnsChat else {
+      result(Self.chatError("IOS_OFFICIAL_BUSY")); return
     }
     if officialModal?.presentingViewController != nil {
       result(nil); return
@@ -75,14 +174,7 @@ public final class IosLocalEnginePlugin: NSObject, FlutterPlugin {
     }
     let page = IosOfficialAppView(resources: resources, getMailbox: { [weak self] in
       guard let self else { throw IosOfficialAppMailbox.Failure.unavailable }
-      self.ensureNodeStarted()
-      guard self.nodeRunning, let report = self.reportURL else { throw IosOfficialAppMailbox.Failure.unavailable }
-      if let mailbox = self.officialMailbox { return mailbox }
-      let mailbox = try IosOfficialAppMailbox(reportURL: report, runtimeIsRunning: { [weak self] in
-        self?.nodeRunning == true
-      })
-      self.officialMailbox = mailbox
-      return mailbox
+      return try self.ownedMailbox()
     })
     let modal = UINavigationController(rootViewController: page)
     modal.modalPresentationStyle = .fullScreen
@@ -105,12 +197,21 @@ public final class IosLocalEnginePlugin: NSObject, FlutterPlugin {
     switch IosChatMailbox.parameters(for: method, params: args) {
     case .failure(let failure): result(Self.chatError(failure.code))
     case .success(let params):
-      if method == .start { ensureNodeStarted() }
+      if method == .start {
+        guard !legacyOwnsChat else { result(Self.chatError("IOS_OFFICIAL_BUSY")); return }
+        ensureNodeStarted()
+      }
       if let mailbox = chatMailbox {
-        mailbox.submit(method, params: params) { reply in
+        if method == .start { legacyOwnsChat = true }
+        mailbox.submit(method, params: params) { [weak self] reply in
           switch reply {
-          case .success(let snapshot): result(snapshot)
-          case .failure(let failure): result(Self.chatError(failure.code))
+          case .success(let snapshot):
+            if method == .stop { self?.legacyOwnsChat = false }
+            result(snapshot)
+          case .failure(let failure):
+            // Keep the reservation on an ambiguous start outcome. Only a
+            // confirmed stop or process exit releases this owner.
+            result(Self.chatError(failure.code))
           }
         }
       } else if state == "idle" {
@@ -170,6 +271,9 @@ public final class IosLocalEnginePlugin: NSObject, FlutterPlugin {
 
   private func nodeExited() {
     nodeRunning = false
+    legacyOwnsChat = false
+    flutterReady = false
+    flutterGeneration = nil
     chatMailbox?.invalidate()
     chatMailbox = nil
     state = "error"; reason = "probe_failed"

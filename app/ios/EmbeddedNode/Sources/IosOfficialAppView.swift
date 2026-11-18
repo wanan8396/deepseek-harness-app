@@ -316,6 +316,12 @@ public final class IosOfficialAppMailbox {
     let body: String
   }
 
+  public struct Reply {
+    public let status: Int
+    public let body: String
+    fileprivate let headers: [[String]]
+  }
+
   private struct Response: Decodable {
     let status: Int
     let headers: [[String]]?
@@ -417,18 +423,32 @@ public final class IosOfficialAppMailbox {
 
   public func request(_ request: IosOfficialWebBridge.HTTPRequest, generation: UUID,
                page: UInt64) async throws -> IosOfficialWebBridge.Reply {
-    let deadline = ProcessInfo.processInfo.systemUptime + 35
-    try check(generation, deadline: deadline)
-    guard pageReady, page > invalidatedPage, inFlight < 16 else { throw Failure.busy }
     guard request.method == "POST", let bytes = request.body, bytes.count <= Self.maxTextBytes,
           let body = String(data: bytes, encoding: .utf8), request.headers.contains(where: { header in
             let mediaType = header.value.split(separator: ";").first?.trimmingCharacters(in: .whitespaces)
             return header.name.lowercased() == "content-type" && mediaType?.lowercased() == "application/json"
           }) else { throw Failure.invalidFrame }
-    let headers = request.headers.map { [$0.name, $0.value] }
-    guard Self.validHeaders(headers) else { throw Failure.invalidFrame }
-    let data = try JSONEncoder().encode(Request(path: request.pathAndQuery, method: request.method,
-      headers: headers, body: body))
+    let reply = try await transact(path: request.pathAndQuery, body: body, headers: request.headers.map { [$0.name, $0.value] },
+      generation: generation, page: page)
+    return .response(.init(status: reply.status, headers: reply.headers.map { .init(name: $0[0], value: $0[1]) },
+      body: Data(reply.body.utf8)))
+  }
+
+  /// The Flutter engine is native-owned; it must present the live Host
+  /// generation, but does not depend on a WebKit page or navigation ID.
+  public func request(path: String, body: String, generation: UUID) async throws -> Reply {
+    try await transact(path: path, body: body, headers: [["content-type", "application/json"]], generation: generation, page: nil)
+  }
+
+  private func transact(path: String, body: String, headers: [[String]], generation: UUID,
+                        page: UInt64?) async throws -> Reply {
+    let deadline = ProcessInfo.processInfo.systemUptime + 35
+    try check(generation, deadline: deadline)
+    guard pageReady, page.map({ $0 > invalidatedPage }) ?? true, inFlight < 16 else { throw Failure.busy }
+    guard body.utf8.count <= Self.maxTextBytes, path.utf8.count <= 256, Self.validHeaders(headers),
+          path.range(of: #"\A/api/[A-Za-z0-9$._-]+(?:/[A-Za-z0-9$._-]+)*\z"#, options: .regularExpression) != nil,
+          !path.split(separator: "/").contains(where: { $0 == "." || $0 == ".." }) else { throw Failure.invalidFrame }
+    let data = try JSONEncoder().encode(Request(path: path, method: "POST", headers: headers, body: body))
     guard data.count <= Self.maxFrameBytes else { throw Failure.invalidFrame }
     let id = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
     let call = "official-call-\(id).json"
@@ -442,14 +462,13 @@ public final class IosOfficialAppMailbox {
     }
     while true {
       try check(generation, deadline: deadline)
-      guard page > invalidatedPage else { throw CancellationError() }
+      guard page.map({ $0 > invalidatedPage }) ?? true else { throw CancellationError() }
       if let bytes = try read(reply, limit: Self.maxFrameBytes) {
         let response = try JSONDecoder().decode(Response.self, from: bytes)
         let headers = response.headers ?? [["content-type", "application/json"]]
         guard (200...599).contains(response.status), response.body.utf8.count <= Self.maxTextBytes,
               Self.validHeaders(headers) else { throw Failure.invalidFrame }
-        return .response(.init(status: response.status, headers: headers.map { .init(name: $0[0], value: $0[1]) },
-          body: Data(response.body.utf8)))
+        return Reply(status: response.status, body: response.body, headers: headers)
       }
       // Each lane suspends independently; a stream pull does not block a close
       // command, a second stream or a unary request.
