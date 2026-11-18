@@ -145,11 +145,19 @@ final class RunnerTests: XCTestCase {
     let officialMailbox = OfficialHostCIMailbox(directory: directory)
     // Start the real preview page before Node's cold initialization. On a
     // loaded CI runner WebKit's first GPU process took over 13 seconds to launch.
-    let bridge = try await startOfficialWebSessionPage(officialMailbox)
-    defer { bridge.invalidate() }
-    XCTAssertTrue(DshEmbeddedNode.startProbe(atPath: script, reportPath: output.path) { code in
+    let bridge: IosOfficialWebBridge?
+    do { bridge = try await startOfficialWebSessionPage(officialMailbox) }
+    catch {
+      XCTFail("CI-only official Web bootstrap: \(error.localizedDescription)")
+      bridge = nil
+    }
+    defer { bridge?.invalidate() }
+    var nodeRunning = false
+    nodeRunning = DshEmbeddedNode.startProbe(atPath: script, reportPath: output.path) { code in
+      nodeRunning = false // The Objective-C wrapper delivers completion on the main queue.
       XCTFail("Node runtime exited unexpectedly: \(code)")
-    })
+    }
+    XCTAssertTrue(nodeRunning)
     let reportDeadline = ProcessInfo.processInfo.systemUptime + 45
     while !FileManager.default.fileExists(atPath: output.path) && ProcessInfo.processInfo.systemUptime < reportDeadline {
       try await Task.sleep(for: .milliseconds(100))
@@ -283,14 +291,240 @@ final class RunnerTests: XCTestCase {
     evidence.lifetime = .keepAlways
     add(evidence)
 
+    if let bridge {
+      do {
+        try await verifyOfficialWebSessionRPC(directory, bridge: bridge, mailbox: officialMailbox)
+      } catch {
+        // Leave no live CI streams even if its independent probe fails.
+        try? await stopOfficialWebSession(directory, bridge: bridge, mailbox: officialMailbox)
+        XCTFail("CI-only official Web gate: \(error.localizedDescription)")
+      }
+    }
+    // Node is process-wide: the production carrier was started by the same
+    // framework probe as the other gates, not by the CI-only preview Host.
+    try await verifyProductionOfficialWeb(root, reportURL: output, runtimeIsRunning: { nodeRunning })
+  }
+
+  @MainActor
+  private func verifyProductionOfficialWeb(_ framework: Bundle, reportURL: URL,
+                                           runtimeIsRunning: @escaping () -> Bool) async throws {
+    let files = FileManager.default
+    let channel = try IosOfficialAppMailbox.Setup(apiKey: "ios-prod-ci-not-a-credential",
+      channelProtocol: "openai-chat", baseURL: "https://official-ios-ci.invalid/v1", modelID: "ios-production-fixture")
+    let production = framework.bundleURL.appendingPathComponent("dsh-official-web", isDirectory: true)
+    let wire = reportURL.appendingPathExtension("official")
+    let workspace = reportURL.deletingLastPathComponent()
+      .appendingPathComponent("OfficialAppState/Workspace", isDirectory: true)
+    let file = workspace.appendingPathComponent("official-approved.txt")
+    let attachmentName = "official-web-production-e2e.json"
+    var evidence: [String: Any] = [
+      "stage": "load-framework-assets", "officialUIReady": false, "usesLocalTCP": false,
+      "modelTransport": "synthetic-https-response", "modelId": "ios-production-fixture",
+      "assets": "dsh-official-web", "carrier": "production-swift-mailbox",
+    ]
+    var mailbox: IosOfficialAppMailbox?
+    var bridge: IosOfficialWebBridge?
+    var responses: Set<String> = []
     do {
-      try await verifyOfficialWebSessionRPC(directory, bridge: bridge, mailbox: officialMailbox)
+      let assets = try IosOfficialWebAssets(previewDirectory: production)
+      let hook = try XCTUnwrap(framework.url(forResource: "official-web-bridge", withExtension: "js"))
+      let script = "globalThis.__DSH_IOS_APP_CARRIER__ = true;\n"
+        + (try String(contentsOf: hook, encoding: .utf8)) + "\n" + officialWebDiagnostics
+      evidence["stage"] = "start-production-carrier"
+      let carrier = try IosOfficialAppMailbox(reportURL: reportURL, runtimeIsRunning: runtimeIsRunning)
+      mailbox = carrier
+      let generation = try carrier.begin(channel)
+      try await carrier.waitUntilReady(generation)
+      let permissions = try files.attributesOfItem(atPath: wire.path)[.posixPermissions] as? NSNumber
+      XCTAssertEqual(permissions?.intValue, 0o700)
+      evidence["privateMailboxVerified"] = permissions?.intValue == 0o700
+      let workspaceValues = try workspace.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+      let workspacePermissions = try files.attributesOfItem(atPath: workspace.path)[.posixPermissions] as? NSNumber
+      let privateWorkspace = workspaceValues.isDirectory == true && workspaceValues.isSymbolicLink == false
+        && workspacePermissions?.intValue == 0o700
+      _ = try XCTUnwrap(privateWorkspace ? true : nil, "Expected the production Host's private Workspace")
+      evidence["privateWorkspaceVerified"] = privateWorkspace
+      XCTAssertFalse(files.fileExists(atPath: wire.appendingPathComponent("official-start.json").path))
+
+      evidence["stage"] = "load-production-webkit"
+      let page = IosOfficialWebBridge(assets: assets, documentStartScript: script,
+        handler: { operation, page in
+          switch operation {
+          case .request(let request):
+            let reply = try await carrier.request(request, generation: generation, page: page)
+            if case .response(let response) = reply {
+              responses.insert("\(request.pathAndQuery):\(response.status)")
+            }
+            return reply
+          }
+        }, onInvalidate: { carrier.invalidate(page: $0, generation: generation) })
+      bridge = page
+      page.load()
+      try await waitForOfficialWebPage(page, assets: assets)
+      let web = page.webView!
+      let initial = try await productionPageResult(web, label: "live official graph and editable composer", """
+        await waitFor(() => globalThis.__ModuleLoader__?.mode === 'live'
+          && !root()?.querySelector('[data-dsh-boot]') && conversation() && composer());
+        return {entries: globalThis.__DSH_BOOT__?.entries?.length,
+          release: globalThis.__DSH_BOOT__?.release?.version,
+          carrier: globalThis.__DSH_IOS_APP_CARRIER__ === true,
+          session: conversation().getAttribute('data-conversation-session')};
+        """)
+      let entries = initial["entries"] as? Int
+      _ = try XCTUnwrap(entries == 28 ? entries : nil, "Expected the shipped 28-entry graph, got \(initial)")
+      XCTAssertEqual(initial["release"] as? String, "0.2.2-rc.3")
+      XCTAssertEqual(initial["carrier"] as? Bool, true)
+      let session = try XCTUnwrap(initial["session"] as? String)
+      evidence["graphEntries"] = entries
+      evidence["sessionId"] = session
+      evidence["officialComposerReady"] = true
+      _ = try XCTUnwrap(!files.fileExists(atPath: file.path) ? true : nil, "Workspace fixture already exists")
+
+      evidence["stage"] = "submit-official-composer"
+      let submitted = try await productionPageResult(web, label: "insert and send from official composer", """
+        const input = await waitFor(composer);
+        const prompt = 'official-tool-fixture';
+        input.focus();
+        const selection = window.getSelection();
+        if (selection && !input.contains(selection.anchorNode)) {
+          const range = document.createRange();
+          range.selectNodeContents(input);
+          range.collapse(false);
+          selection.removeAllRanges();
+          selection.addRange(range);
+        }
+        if (!document.execCommand('insertText', false, prompt)) throw new Error('insertText failed');
+        input.dispatchEvent(new InputEvent('input', {bubbles: true, data: prompt, inputType: 'insertText'}));
+        // In this locked graph only the primary composer action sets aria-busy.
+        const send = await waitFor(() => input.textContent === prompt
+          && input.closest('[data-composer-card]')?.querySelector('button[aria-busy="false"]:enabled'));
+        send.click();
+        return {clicked: true};
+        """)
+      XCTAssertEqual(submitted["clicked"] as? Bool, true)
+      evidence["officialComposerSubmitClicked"] = submitted["clicked"]
+
+      evidence["stage"] = "wait-for-official-approval"
+      let approval = try await productionPageResult(web, label: "approval card with file and preview", """
+        const card = await waitFor(() => {
+          const item = approvalCard();
+          const detail = item?.querySelector('[data-approval-scroll]')?.textContent ?? '';
+          return detail.includes('official-approved.txt') && detail.includes('official simulator approved')
+            && allowOnce(item) && item;
+        });
+        return {key: card.getAttribute('data-approval-key')};
+        """)
+      let approvalKey = try XCTUnwrap(approval["key"] as? String)
+      evidence["officialApprovalDetailsVerified"] = true
+      // This check runs between observing the native approval request in the
+      // official renderer and the only action which answers it.
+      _ = try XCTUnwrap(!files.fileExists(atPath: file.path) ? true : nil, "Tool wrote before approval")
+      evidence["fileAbsentBeforeApproval"] = true
+
+      evidence["stage"] = "allow-once-from-official-card"
+      let approvalJSON = String(decoding: try JSONEncoder().encode(approvalKey), as: UTF8.self)
+      let allowed = try await productionPageResult(web, label: "click official Allow once", """
+        const card = approvalCard();
+        const button = card?.getAttribute('data-approval-key') === \(approvalJSON) ? allowOnce(card) : null;
+        if (!button) throw new Error('Original approval is no longer answerable');
+        button.click();
+        return {clicked: true};
+        """)
+      XCTAssertEqual(allowed["clicked"] as? Bool, true)
+      evidence["officialAllowOnceClicked"] = allowed["clicked"]
+
+      evidence["stage"] = "verify-visible-result-and-file"
+      let result = try await productionPageResult(web, label: "assistant result and cleared approval", """
+        await waitFor(() => !approvalCard() && Array.from(conversation()?.querySelectorAll(
+          '[data-chat-flow-kind="assistant-step"]') ?? []).some(node =>
+            node.getClientRects().length > 0 && node.textContent.includes('official-tool-result')));
+        return {session: conversation().getAttribute('data-conversation-session')};
+        """)
+      XCTAssertEqual(result["session"] as? String, session)
+      evidence["officialAssistantResultVisible"] = true
+      let bytes = try Data(contentsOf: file)
+      _ = try XCTUnwrap(bytes == Data("official simulator approved\n".utf8) ? true : nil,
+        "Approved Workspace file must contain the exact fixture bytes")
+      evidence["approvedFileBytesVerified"] = true
+      let promptReachedCarrier = responses.contains("/api/session/prompt:200")
+      let answerReachedCarrier = responses.contains("/api/$events/result:200")
+      let streamedThroughCarrier = responses.contains("/api/ios-app/stream:200")
+      XCTAssertTrue(promptReachedCarrier && answerReachedCarrier && streamedThroughCarrier, "\(responses.sorted())")
+      evidence["promptReachedProductionCarrier"] = promptReachedCarrier
+      evidence["approvalReachedProductionCarrier"] = answerReachedCarrier
+      evidence["productionStreamVerified"] = streamedThroughCarrier
+
+      evidence["stage"] = "stop-production-carrier"
+      let closed = try await pageResult(web, "await globalThis.__iosOfficialBridgeClose(); return true;",
+        seconds: 10, label: "close production page streams")
+      XCTAssertEqual(closed as? Bool, true)
+      page.invalidate()
+      web.stopLoading()
+      try await carrier.stop()
+      let stopped = try Data(contentsOf: wire.appendingPathComponent("official-stopped")) == Data("1".utf8)
+      XCTAssertTrue(stopped)
+      evidence["hostShutdownAcknowledged"] = stopped
+      evidence["stage"] = "production-official-web-chat-and-approval"
+      evidence["officialUIReady"] = true
+      try addJSONEvidence(evidence, name: attachmentName)
     } catch {
-      // A failing UI gate must not leave active stream pulls against a directory
-      // that the outer test is about to remove.
-      try? await stopOfficialWebSession(directory, bridge: bridge, mailbox: officialMailbox)
+      bridge?.invalidate()
+      bridge?.webView.stopLoading()
+      try? await mailbox?.stop()
+      evidence["failure"] = error.localizedDescription
+      evidence["carrierResponses"] = responses.sorted()
+      try? addJSONEvidence(evidence, name: attachmentName)
       throw error
     }
+  }
+
+  @MainActor
+  private func productionPageResult(_ web: WKWebView, label: String, _ body: String) async throws -> [String: Any] {
+    let result = try await pageResult(web, """
+      const root = () => document.getElementById('root');
+      const conversation = () => root()?.querySelector('[data-conversation-content][data-conversation-session]');
+      const composer = () => conversation()?.querySelector('[data-composer-input][contenteditable="true"]');
+      const approvalCard = () => conversation()?.querySelector('[data-approval-key]');
+      const allowOnceLabels = new Set(['allow once', '允许一次', '1 回だけ許可', 'permitir una vez',
+        'autoriser une fois', 'einmal zulassen', 'разрешить один раз', 'permitir uma vez']);
+      const allowOnce = card => Array.from(card?.querySelectorAll('button:enabled') ?? [])
+        .find(button => allowOnceLabels.has(button.textContent.trim().toLowerCase()));
+      const deadline = performance.now() + 25_000;
+      async function waitFor(observe) {
+        for (;;) {
+          const value = observe();
+          if (value) return value;
+          if (performance.now() >= deadline) {
+            throw new Error(JSON.stringify({mode: globalThis.__ModuleLoader__?.mode,
+              entries: globalThis.__DSH_BOOT__?.entries?.length,
+              phase: conversation()?.getAttribute('data-content-phase'),
+              hasComposer: !!composer(), hasApproval: !!approvalCard(),
+              slotErrors: Array.from(root()?.querySelectorAll('[data-slot-error]') ?? [], x => x.getAttribute('data-slot-error')),
+              errors: globalThis.__iosOfficialErrors?.slice(0, 8), body: root()?.innerText?.slice(0, 768)}));
+          }
+          await new Promise(resolve => setTimeout(resolve, 75));
+        }
+      }
+      \(body)
+      """, seconds: 35, label: label)
+    return try XCTUnwrap(result as? [String: Any], label)
+  }
+
+  private var officialWebDiagnostics: String {
+    """
+      globalThis.__iosOfficialErrors = [];
+      addEventListener('error', event => globalThis.__iosOfficialErrors.push(String(event.message || event.target?.src || 'resource-error')), true);
+      addEventListener('unhandledrejection', event => globalThis.__iosOfficialErrors.push(String(event.reason)));
+      addEventListener('securitypolicyviolation', event => globalThis.__iosOfficialErrors.push(event.violatedDirective + ': ' + event.blockedURI));
+      """
+  }
+
+  private func addJSONEvidence(_ fields: [String: Any], name: String) throws {
+    let attachment = XCTAttachment(data: try JSONSerialization.data(withJSONObject: fields, options: [.sortedKeys]),
+      uniformTypeIdentifier: "public.json")
+    attachment.name = name
+    attachment.lifetime = .keepAlways
+    add(attachment)
   }
 
   @MainActor
@@ -313,6 +547,12 @@ final class RunnerTests: XCTestCase {
         }
       }, onInvalidate: { mailbox.invalidate($0) })
     bridge.load()
+    try await waitForOfficialWebPage(bridge, assets: assets)
+    return bridge
+  }
+
+  @MainActor
+  private func waitForOfficialWebPage(_ bridge: IosOfficialWebBridge, assets: IosOfficialWebAssets) async throws {
     let deadline = ProcessInfo.processInfo.systemUptime + 35
     while !bridge.isReady && ProcessInfo.processInfo.systemUptime < deadline {
       if let error = bridge.navigationFailure { throw error }
@@ -322,8 +562,7 @@ final class RunnerTests: XCTestCase {
       "App bootstrap document did not commit; served=\(assets.servedPaths.sorted()), URL=\(String(describing: bridge.webView.url))")
     // The scheme response can commit before document-start scripts execute.
     let transport = try await pageResult(bridge.webView, "return typeof globalThis.__DSH_TRANSPORT__?.openStream === 'function';")
-    XCTAssertEqual(transport as? Bool, true)
-    return bridge
+    _ = try XCTUnwrap(transport as? Bool == true ? true : nil, "Document-start transport was not installed")
   }
 
   @MainActor
@@ -741,7 +980,8 @@ final class RunnerTests: XCTestCase {
   /// Avoid the Swift WebKit overlay missing from the iOS 18 simulator.
   /// Await the JS promise in the page and retrieve its result with a bounded poll.
   @MainActor
-  private func pageResult(_ web: WKWebView, _ body: String, seconds: TimeInterval = 27) async throws -> Any? {
+  private func pageResult(_ web: WKWebView, _ body: String, seconds: TimeInterval = 30,
+                          label: String = "WebKit script") async throws -> Any? {
     let slot = "__iosTest_" + UUID().uuidString.replacingOccurrences(of: "-", with: "")
     _ = try await web.evaluateJavaScript("""
       void (async () => { \(body) })().then(
@@ -757,13 +997,13 @@ final class RunnerTests: XCTestCase {
       if let envelope = raw as? String, !envelope.isEmpty {
         let decoded = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(envelope.utf8)) as? [String: Any])
         if let error = decoded["error"] as? String {
-          throw NSError(domain: "OfficialWebCI", code: 1, userInfo: [NSLocalizedDescriptionKey: error])
+          throw NSError(domain: "OfficialWebCI", code: 1, userInfo: [NSLocalizedDescriptionKey: "\(label): \(error)"])
         }
         return decoded["value"]
       }
       try await Task.sleep(for: .milliseconds(25))
     }
-    throw URLError(.timedOut)
+    throw NSError(domain: "OfficialWebCI", code: 2, userInfo: [NSLocalizedDescriptionKey: "\(label) timed out"])
   }
 
   private typealias ChatReply = Result<[String: Any], IosChatMailbox.Failure>

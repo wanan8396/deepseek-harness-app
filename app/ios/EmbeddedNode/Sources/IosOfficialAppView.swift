@@ -276,10 +276,10 @@ final class IosOfficialAppView: UIViewController {
 /// Swift/Node carrier. The only writable scope is the private generation
 /// transport directory next to the shared probe report, never the AppState.
 @MainActor
-final class IosOfficialAppMailbox {
+public final class IosOfficialAppMailbox {
   enum Failure: Error { case key, channel, workspace, busy, page, timeout, unavailable, invalidFrame }
 
-  struct Setup: Encodable {
+  public struct Setup: Encodable {
     private struct Channel: Encodable {
       let `protocol`: String
       let baseUrl: String
@@ -288,7 +288,7 @@ final class IosOfficialAppMailbox {
     private let apiKey: String
     private let channel: Channel
 
-    init(apiKey: String, channelProtocol: String, baseURL: String, modelID: String) throws {
+    public init(apiKey: String, channelProtocol: String, baseURL: String, modelID: String) throws {
       let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
       guard (1...1024).contains(key.utf8.count), key.utf8.allSatisfy({ (0x21...0x7e).contains($0) }) else {
         throw Failure.key
@@ -344,7 +344,7 @@ final class IosOfficialAppMailbox {
   private var invalidatedPage: UInt64 = 0
   private var inFlight = 0
 
-  init(reportURL: URL, runtimeIsRunning: @escaping () -> Bool) throws {
+  public init(reportURL: URL, runtimeIsRunning: @escaping () -> Bool) throws {
     var path = reportURL.appendingPathExtension("official")
     guard reportURL.isFileURL, reportURL.path.hasPrefix("/"), Self.isOfficialDirectory(path.lastPathComponent),
           mkdir(path.path, 0o700) == 0 || errno == EEXIST else { throw Failure.unavailable }
@@ -367,7 +367,7 @@ final class IosOfficialAppMailbox {
 
   deinit { Darwin.close(directory) }
 
-  func begin(_ setup: Setup) throws -> UUID {
+  public func begin(_ setup: Setup) throws -> UUID {
     guard runtimeIsRunning() else { throw Failure.unavailable }
     if needsStop, stopSent { _ = try settleStop() }
     guard !needsStop else { throw Failure.busy }
@@ -388,7 +388,7 @@ final class IosOfficialAppMailbox {
     return ticket
   }
 
-  func waitUntilReady(_ generation: UUID) async throws {
+  public func waitUntilReady(_ generation: UUID) async throws {
     let deadline = ProcessInfo.processInfo.systemUptime + 30
     defer { if self.generation == generation { remove(Self.startName) } }
     while true {
@@ -410,12 +410,12 @@ final class IosOfficialAppMailbox {
     }
   }
 
-  func invalidate(page: UInt64, generation: UUID) {
+  public func invalidate(page: UInt64, generation: UUID) {
     guard self.generation == generation else { return }
     invalidatedPage = max(invalidatedPage, page)
   }
 
-  func request(_ request: IosOfficialWebBridge.HTTPRequest, generation: UUID,
+  public func request(_ request: IosOfficialWebBridge.HTTPRequest, generation: UUID,
                page: UInt64) async throws -> IosOfficialWebBridge.Reply {
     let deadline = ProcessInfo.processInfo.systemUptime + 35
     try check(generation, deadline: deadline)
@@ -457,7 +457,7 @@ final class IosOfficialAppMailbox {
     }
   }
 
-  func stop() async throws {
+  public func stop() async throws {
     guard needsStop else { return }
     generation = nil
     pageReady = false

@@ -99,12 +99,12 @@ const cancelCall = createCall('call_ci_cancel', workspace.cancelledPath);
 const readCall = { id: 'call_ci_read', name: readTool, args: { path: workspace.allowedPath } };
 const listCall = { id: 'call_ci_list', name: listTool, args: { path: '.' } };
 
-function openAiSse(deltas, reason) {
+function openAiSse(deltas, reason, model = custom.modelId) {
   const frames = [ ...deltas.map((delta) => ({ delta, finish_reason: null })), { delta: {}, finish_reason: reason } ];
   return new Response(new ReadableStream({
     start(controller) {
       for (const choice of frames) {
-        const chunk = { id: 'chatcmpl-ci', object: 'chat.completion.chunk', created: 1, model: custom.modelId,
+        const chunk = { id: 'chatcmpl-ci', object: 'chat.completion.chunk', created: 1, model,
           choices: [{ index: 0, ...choice }] };
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
       }
@@ -114,14 +114,14 @@ function openAiSse(deltas, reason) {
   }), { headers: streamHeaders });
 }
 
-function issueCall({ id, name, args }, content) {
+function issueCall({ id, name, args }, content, model = custom.modelId) {
   const json = JSON.stringify(args);
   const split = Math.floor(json.length / 2);
   return openAiSse([
     { role: 'assistant', content: content ?? null },
     { tool_calls: [{ index: 0, id, type: 'function', function: { name, arguments: json.slice(0, split) } }] },
     { tool_calls: [{ index: 0, function: { arguments: json.slice(split) } }] },
-  ], 'tool_calls');
+  ], 'tool_calls', model);
 }
 
 function expectToolResult(messages, { id, name, args }, expected, content = null) {
@@ -179,6 +179,28 @@ function customResponse(init, headers) {
   return done();
 }
 
+const officialModel = 'ios-production-fixture';
+const officialKey = 'ios-prod-ci-not-a-credential';
+const officialPrompt = 'official-tool-fixture';
+const officialCall = { id: 'call_ios_prod_ci', name: createTool,
+  args: { path: 'official-approved.txt', text: 'official simulator approved\n' } };
+function officialResponse(init, headers) {
+  assert.equal(headers.get('authorization'), `Bearer ${officialKey}`);
+  assert.ok(!init.body.includes(officialKey));
+  const { model, messages, stream, tools } = JSON.parse(init.body);
+  assert.equal(model, officialModel);
+  assert.equal(stream, true);
+  assert.deepEqual(tools.map(item => item.function.name).sort(), toolNames);
+  const index = messages.findLastIndex(message => message.role === 'user' && message.content === officialPrompt);
+  assert.ok(index >= 0, 'OFFICIAL_COMPOSER_PROMPT_UNKNOWN');
+  const follow = messages.slice(index + 1).filter(message => message.role !== 'system');
+  const tool = follow.findIndex(message => message.role === 'tool' && message.tool_call_id === officialCall.id);
+  if (tool === -1) return issueCall(officialCall, null, officialModel);
+  expectToolResult(follow.slice(tool - 1, tool + 1), officialCall,
+    { path: officialCall.args.path, byteLength: Buffer.byteLength(officialCall.args.text) });
+  return openAiSse([{ role: 'assistant', content: 'official-tool-result' }], 'stop', officialModel);
+}
+
 function installFetchFixture() {
   let calls = 0;
   globalThis.fetch = async (url, init) => {
@@ -189,6 +211,7 @@ function installFetchFixture() {
       const headers = new Headers(init.headers);
       assert.equal(headers.get('accept'), 'text/event-stream');
       if (String(url) === 'https://api.deepseek.com/anthropic/v1/messages') return deepSeekResponse(init, headers);
+      if (String(url) === 'https://official-ios-ci.invalid/v1/chat/completions') return officialResponse(init, headers);
       assert.equal(String(url), `${custom.baseUrl}/chat/completions`);
       return customResponse(init, headers);
     } catch (error) {
