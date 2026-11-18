@@ -135,15 +135,32 @@ export async function createOfficialHost({ seed, stateDirectory, clientPackages 
   }
   const lifetime = new AbortController();
   let appServices;
+  let appRoutes;
   if (app) {
     try {
       appServices = await app.registerOfficialAppServices(ctx, {
         workspace: join(state, 'Workspace'), stateDirectory: state,
         channel: appChannel.channel, apiKey: appChannel.apiKey, lifetimeSignal: lifetime.signal,
       });
+      const { createOfficialAppRoutePolicy } = await import(pathToFileURL(join(root, 'official-app-routes.mjs')).href);
+      const registry = ctx.get('workspaceRegistry');
+      const workspace = await registry.resolveByPath(appServices.workspace)
+        ?? await registry.create(appServices.workspace);
+      // This initial App composition owns a single private Workspace store.
+      // If the directory was written by an incompatible build, never expose
+      // other registries through the owner peer's baseline.
+      if (registry.list().some(item => item.id !== workspace.id)) throw new Error('IOS_HOST_CONFLICTING_WORKSPACE');
+      appRoutes = createOfficialAppRoutePolicy({ workspaceId: workspace.id,
+        containsSensitiveText: appServices.containsSensitiveText,
+        hasSession: id => workspace.sessionIds.includes(id),
+      });
     } catch (error) {
-      await ctx.fiber.dispose();
-      await rm(work, { recursive: true, force: true });
+      lifetime.abort();
+      try { await appServices?.dispose(); }
+      finally {
+        try { await ctx.fiber.dispose(); }
+        finally { await rm(work, { recursive: true, force: true }); }
+      }
       throw error;
     } finally { appChannel = undefined; }
   }
@@ -161,7 +178,17 @@ export async function createOfficialHost({ seed, stateDirectory, clientPackages 
       if (url.protocol !== 'dsh-app:' || url.host !== 'bundle' || url.port) {
         return new Response('forbidden', { status: 403 });
       }
-      return shared.fetch(new Request(`http://bundle${url.pathname}${url.search}`, request), peer);
+      const endpointURL = `http://bundle${url.pathname}${url.search}`;
+      if (!appRoutes) return shared.fetch(new Request(endpointURL, request), peer);
+      if (lifetime.signal.aborted) return new Response('closed', { status: 503 });
+      if (request.method !== 'POST' || request.headers.get('content-type')?.split(';')[0]?.trim() !== 'application/json') {
+        return new Response('unsupported', { status: 415 });
+      }
+      const admitted = appRoutes.admitRequest(request.method, `${url.pathname}${url.search}`, await request.text());
+      if (!admitted.ok) return new Response('not available', { status: admitted.status });
+      return shared.fetch(new Request(endpointURL, { method: 'POST', body: admitted.body,
+        headers: { 'content-type': 'application/json' }, signal: AbortSignal.any([request.signal, lifetime.signal]),
+      }), peer);
     },
     appWorkspace: appServices?.workspace,
     containsSensitiveText: appServices?.containsSensitiveText,
@@ -169,7 +196,9 @@ export async function createOfficialHost({ seed, stateDirectory, clientPackages 
     clientGraph() { return ctx.get('clientModules')?.graph(); },
     clientBundle(request) { return ctx.get('clientModules')?.fetchBundle(request); },
     openStream(endpoint, payload, signal, uplink = emptyUplink()) {
-      return gateway.wireStream.open(endpoint, payload, uplink, peer, signal);
+      if (appRoutes && !appRoutes.admitStream(endpoint, payload)) throw new Error('IOS_APP_STREAM_NOT_AVAILABLE');
+      const scopedSignal = signal ? AbortSignal.any([signal, lifetime.signal]) : lifetime.signal;
+      return gateway.wireStream.open(endpoint, payload, uplink, peer, scopedSignal);
     },
     dispose() {
       disposed ??= (async () => {
