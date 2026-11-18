@@ -32,6 +32,8 @@
 
 Flutter 是客户端，iOS 宿主提供传输、存储和系统能力。AgentLoop、Session、Tools、审批和 API Gateway 均从官方 `@deepseek-ai/dsh` 发行依赖解析，不在 App 内维护一套替代引擎。
 
+iOS Flutter 接入层与现有 WebKit 共用同一官方 Host：原生仅传递限长请求、流事件与审批回复。私有信箱绑定一个活动代次；切换、关闭或重开后，旧代次请求失效。切换到历史 Android Flutter 聊天 UI 是独立改动，不随这层接入自动完成。
+
 升级先新增对应上游发行的锁目录，然后修改 [iOS 引擎清单](../runtime/ios/requirements.json) 的版本、锁路径、Node 要求和上游 Web release commit。GitHub 只安装该锁指定的版本，核验官方 npm 来源、完整性和实际入包版本，再执行 API、工具、模拟器和 IPA 门槛。兼容的上游发行无需修改 Flutter UI；官方协议变化、图像/命令原生能力或 Node ABI 变化则需要更新相应接入层。现阶段以重构建和签名的 IPA 更新引擎，不在手机上热替换可执行文件。
 
 ## 直接在 GitHub 构建

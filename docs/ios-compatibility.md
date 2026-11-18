@@ -16,7 +16,7 @@
 ## 证据索引
 
 - [GitHub Actions `46f70b0`](https://github.com/wanan8396/deepseek-harness-app/actions/runs/44298142976)，归档 `ios-build-and-probe`。其中 `build-info.txt` 记录模拟器和 Widget 门槛；`official-web-embedded-session-rpc` 记录官方侧栏和无 TCP。`embedded-ios-chat-verification` 记录真实本机工具、应用级取消与模拟 HTTPS。此归档不是生产 WebKit 审批卡端到端证据。
-- [GitHub Actions `2170171`](https://github.com/wanan8396/deepseek-harness-app/actions/runs/44321950118) 增加独立 `official-web-production-e2e` 验收：从打包的官方输入框发送，真实 AgentLoop 经原生审批挂起，在卡片上允许一次后才写私有文件，并在同一会话显示输出。验收结论以该作业及 JSON 证据为准。
+- [GitHub Actions `cd2ae39`](https://github.com/wanan8396/deepseek-harness-app/actions/runs/44358820375) 用 Flutter 将调用的生产原生通道直接验收模型目录、会话流、同一官方 Peer 的审批回复、真实工具写入和关闭后旧代次失效；模拟器结果以 `ios-official-flutter-carrier` 证据为准。这不是 Flutter 界面本身的验收。前一轮 WebKit 审批卡 UI 测试未通过，当前计划改为原 Android 的 Flutter 界面。
 
 ## 文本附件接入门槛
 
