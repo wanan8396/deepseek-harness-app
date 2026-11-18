@@ -6,7 +6,7 @@ This branch targets iOS phones and tablets, not a macOS desktop app. Android sta
 
 ## Current stage
 
-On iPhone and iPad, open **On-device chat** from the runtime screen and enter a DeepSeek API key to start a text conversation. DSH's AgentLoop and SQLite run in the app process. Model inference uses the official DeepSeek HTTPS API; this does not run model weights on the device or require a computer, remote DSH, or a localhost bridge.
+On iPhone and iPad, open the interim **On-device chat** screen and use the official DeepSeek endpoint or set a custom DeepSeek / OpenAI-compatible HTTPS endpoint, model ID and key. DSH's AgentLoop and SQLite run in the app process. Model inference uses the configured API and requires no computer, remote DSH or localhost bridge.
 
 - Runner targets both iPhone and iPad, minimum iOS 16.
 - `node_start()` runs inside an application-owned thread. It does not unpack Ubuntu, execute Linux binaries, use Root/PRoot, or depend on an external computer.
@@ -42,7 +42,9 @@ The macOS runner supplies Xcode; the product target remains iOS. An unsigned app
 
 ## Supported scope
 
-- This is one text conversation, not the desktop DSH profile. Terminals, shells, workspace tools, approvals, attachments and third-party plugins are not included.
+- The interim product UI supports one text conversation and can list, read and create text files in the app's private workspace. Creating a file requires one-time user approval before writing.
+- The official WebKit assets and session API have separate tests. Multiple sessions in a test page do not make them available in the released app. The official chat, sidebar, model settings, attachments and third-party plugins are not attached to the production entry point.
+- iOS does not reproduce Android Root/PRoot or Linux. Terminal, shell, desktop native plugins and other apps' files are outside this port's supported capabilities.
 - Chat and persistence are checked in Simulator. The paid API has not been checked on a physical device with a live API key. Recovery after force-quitting and continuous background use are not verified.
 - Full profile resolution still needs separately adapted internal ESM/CJS access and `node-addon-require-builtin`. The relative-module Loader does not use that path or replace it with a shim. A macOS arm64 addon is not an iOS arm64 addon.
 

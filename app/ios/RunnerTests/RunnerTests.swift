@@ -213,8 +213,8 @@ final class RunnerTests: XCTestCase {
     while !bridge.isReady && ProcessInfo.processInfo.systemUptime < deadline {
       try await Task.sleep(for: .milliseconds(25))
     }
-    try XCTUnwrap(bridge.isReady ? true : nil)
-    let raw = try await bridge.webView.callAsyncJavaScript("""
+    _ = try XCTUnwrap(bridge.isReady ? true : nil, "App bootstrap document did not commit")
+    let raw = try await pageResult(bridge.webView, """
       let count = 0;
       async function rpc(method, args) {
         const rpcId = 'ios-web-test-' + ++count;
@@ -233,7 +233,7 @@ final class RunnerTests: XCTestCase {
       const second = await rpc('session/create', {request: {}});
       const list = await rpc('session/list', {_request: {}});
       return { ids: [first.sessionId, second.sessionId], listed: list.items.map(x => x.sessionId) };
-      """, arguments: [:], in: nil, contentWorld: .page)
+      """)
     let result = try XCTUnwrap(raw as? [String: Any])
     let ids = try XCTUnwrap(result["ids"] as? [String])
     let listed = try XCTUnwrap(result["listed"] as? [String])
@@ -355,7 +355,7 @@ final class RunnerTests: XCTestCase {
       try await Task.sleep(for: .milliseconds(25))
     }
     XCTAssertTrue(bridge.isReady)
-    let raw = try await bridge.webView.callAsyncJavaScript("""
+    let raw = try await pageResult(bridge.webView, """
       const fetch = window.__DSH_TRANSPORT__.fetch;
       const response = await fetch('api/session/list?check=1', {
         method: 'POST', headers: {'content-type': 'text/plain'}, body: '请求🧪',
@@ -363,7 +363,7 @@ final class RunnerTests: XCTestCase {
       let foreignBlocked = false;
       try { await fetch('https://example.invalid/api/session/list'); } catch { foreignBlocked = true; }
       return { status: response.status, text: await response.text(), foreignBlocked };
-      """, arguments: [:], in: nil, contentWorld: .page)
+      """)
     let value = try XCTUnwrap(raw as? [String: Any])
     XCTAssertEqual(value["status"] as? Int, 201)
     XCTAssertEqual(value["text"] as? String, "收到🧪")
@@ -374,10 +374,10 @@ final class RunnerTests: XCTestCase {
     XCTAssertEqual(request.pathAndQuery, "/api/session/list?check=1")
     XCTAssertEqual(request.body, Data("请求🧪".utf8))
     bridge.invalidate()
-    let rejected = try await bridge.webView.callAsyncJavaScript("""
+    let rejected = try await pageResult(bridge.webView, """
       try { await window.__DSH_TRANSPORT__.fetch('api/session/list'); return false; }
       catch { return true; }
-      """, arguments: [:], in: nil, contentWorld: .page)
+      """)
     XCTAssertEqual(rejected as? Bool, true)
     XCTAssertEqual(received.count, 1)
     let report = try JSONSerialization.data(withJSONObject: [
@@ -388,6 +388,34 @@ final class RunnerTests: XCTestCase {
     attachment.name = "official-web-unary-bridge-fixture.json"
     attachment.lifetime = .keepAlways
     add(attachment)
+  }
+
+  /// Avoid the Swift WebKit overlay missing from the iOS 18 simulator.
+  /// Await the JS promise in the page and retrieve its result with a bounded poll.
+  @MainActor
+  private func pageResult(_ web: WKWebView, _ body: String) async throws -> Any? {
+    let slot = "__iosTest_" + UUID().uuidString.replacingOccurrences(of: "-", with: "")
+    _ = try await web.evaluateJavaScript("""
+      void (async () => { \(body) })().then(
+        value => globalThis.\(slot) = JSON.stringify({value}),
+        error => globalThis.\(slot) = JSON.stringify({error: String(error)}));
+      true;
+      """)
+    let deadline = ProcessInfo.processInfo.systemUptime + 27
+    while ProcessInfo.processInfo.systemUptime < deadline {
+      let raw = try await web.evaluateJavaScript("""
+        (() => { const value = globalThis.\(slot); delete globalThis.\(slot); return value ?? ''; })()
+        """)
+      if let envelope = raw as? String, !envelope.isEmpty {
+        let decoded = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(envelope.utf8)) as? [String: Any])
+        if let error = decoded["error"] as? String {
+          throw NSError(domain: "OfficialWebCI", code: 1, userInfo: [NSLocalizedDescriptionKey: error])
+        }
+        return decoded["value"]
+      }
+      try await Task.sleep(for: .milliseconds(25))
+    }
+    throw URLError(.timedOut)
   }
 
   private func request(_ mailbox: IosChatMailbox, _ method: IosChatMailbox.Method,

@@ -6,7 +6,7 @@
 
 ## 当前阶段
 
-iPhone／iPad 可从本机能力页进入 **本机聊天**，输入 DeepSeek API Key 并启动一个纯文本会话。DSH AgentLoop 与 SQLite 在 App 进程内运行；模型推理由官方 DeepSeek HTTPS API 完成，不是在手机上跑模型权重，也不需要电脑、远程 DSH 或 `127.0.0.1` 桥接。
+iPhone／iPad 可从本机能力页进入临时 **本机聊天**，使用 DeepSeek 官方接口，或设置自定义 DeepSeek / OpenAI 兼容 HTTPS 接口、模型 ID 和密钥。DSH AgentLoop 与 SQLite 在 App 进程内运行；模型推理通过配置的 API 完成，不需要电脑、远程 DSH 或 `127.0.0.1` 桥接。
 
 - Xcode Runner 同时面向 iPhone、iPad，最低 iOS 16。
 - Node 在 App 自己的线程内通过 `node_start()` 运行，不解包 Ubuntu，不执行 Linux 二进制，不使用 Root、PRoot 或外部电脑。
@@ -42,7 +42,9 @@ macOS runner 仅是 Xcode 构建环境，产物目标仍为 iOS。未签名 App 
 
 ## 支持范围
 
-- 当前是单会话纯文本聊天，不是桌面版 DSH profile。没有终端、Shell、工作区工具、审批、附件及第三方插件。
+- 交付的临时界面是单会话纯文本聊天，支持在 App 私有工作区列目录、读文本、创建文本文件。创建前需要用户允许一次；未允许时不写文件。
+- 官方 WebKit 资源与官方会话 API 单独测试。即便测试页面成功创建并列出多条会话，也不等于正式界面已支持多会话。目前官方聊天、侧栏、模型设置、附件和第三方插件还未接入正式入口。
+- iOS 版本不等同于 Android Root／PRoot 或 Linux 环境，没有终端、Shell、桌面原生插件及对其他 App 文件的访问。
 - 聊天与存储在模拟器内验证；未用真机真实 API Key 验证付费接口，也未验证强制结束 App 后的恢复或持续后台运行。
 - 完整 profile 的 `node-addon-require-builtin` 与内部 ESM/CJS 入口仍需单独适配。最小相对路径 Loader 不挂载该路径，也没有替代 shim；Mac arm64 原生扩展不等于 iOS arm64 原生扩展。
 
