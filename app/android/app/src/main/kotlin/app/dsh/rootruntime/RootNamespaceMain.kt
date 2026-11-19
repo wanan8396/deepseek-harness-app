@@ -53,7 +53,10 @@ object RootNamespaceMain {
             check(RootTools.run(RootTools.command("mount") + listOf("-o", "rprivate", "none", "/"))) { "root_namespace_unavailable" }
             if (args[0] == "probe") {
                 check(RootTools.run(RootTools.command("chroot") + listOf("/", "/system/bin/sh", "-c", "test \"\$(id -u)\" = 0")))
-                finish(0)
+                // The fixed probe commands have both exited. No guest or owner thread
+                // was started; exiting releases this probe-only namespace. Failure
+                // and real launch paths still retire descendants through finish().
+                exitProcess(0)
             }
             val parsed = RootLaunchPlan.parse(RootRuntimeProtocol.json(Frames.read(System.`in`) ?: return))
             plan = parsed

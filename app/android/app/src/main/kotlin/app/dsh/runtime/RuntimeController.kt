@@ -288,7 +288,9 @@ class RuntimeController private constructor(private val app: Context) : DshProce
             var launched: DshProcess? = null
             try {
                 check(officialLocalWeb) { "official_runtime_required" }
-                RootAccess.get(app).recoverBeforeGuestWrites(installer.rootfs)
+                val recoveryStarted = SystemClock.elapsedRealtime()
+                try { RootAccess.get(app).recoverBeforeGuestWrites(installer.rootfs) }
+                finally { log("[dsh-app] startup step: root recovery gate ${SystemClock.elapsedRealtime() - recoveryStarted} ms", "system") }
                 if (officialLocalWeb) GuestDependencies.prepare(installer.rootfs)
                 if (officialLocalWeb && !safe) {
                     val skills = OfficialPhoneSkills.sync(installer.rootfs,
@@ -346,10 +348,11 @@ class RuntimeController private constructor(private val app: Context) : DshProce
                         ) else null)
                     }
                 } ?: return@execute
-                timeline.spawned()
+                timeline.launcherEntered()
                 p.start(env, if (storage) PhoneStorage.binds() else emptyList(), safe) {
                     // Rescue preparation owns its briefing; leave the original home untouched.
                     if (!safe) GuestSetup.writeAgentsMd(installer.rootfs, storage, rootEngine = p.rooted)
+                    timeline.guestReleased()
                 }
                 RootAccess.get(app).launched(gen, p.rooted)
             } catch (e: Throwable) {

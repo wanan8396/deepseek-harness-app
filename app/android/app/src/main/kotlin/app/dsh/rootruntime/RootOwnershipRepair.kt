@@ -94,10 +94,13 @@ internal object RootOwnershipRepair {
             for (dir in directories) {
                 val pid = dir.name.toIntOrNull() ?: continue
                 if (pid == anchor) continue
-                val stat = runCatching { File(dir, "stat").readText().substringAfterLast(") ").split(' ') }.getOrNull() ?: continue
-                if (stat.getOrNull(0) in setOf("Z", "X")) continue
                 val ns = runCatching { Os.readlink("/proc/$pid/ns/mnt") }.getOrNull() ?: continue
-                if (ns == namespace) put(pid, stat.getOrNull(19) ?: throw IOException("root_cleanup_observation"))
+                if (ns != namespace) continue
+                // Only a member needs its identity read and parsed. The
+                // signal path below still rechecks both start time and namespace.
+                val stat = runCatching { File(dir, "stat").readText().substringAfterLast(") ").split(' ') }.getOrNull() ?: continue
+                if (stat.getOrNull(0) == "Z" || stat.getOrNull(0) == "X") continue
+                put(pid, stat.getOrNull(19) ?: throw IOException("root_cleanup_observation"))
             }
         }
         val deadline = System.nanoTime() + 5_000_000_000L

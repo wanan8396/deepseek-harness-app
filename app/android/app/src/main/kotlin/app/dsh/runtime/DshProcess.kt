@@ -75,10 +75,12 @@ class DshProcess(
         val capabilities = manifest.raw.optJSONObject("capabilities")
         check(OfficialRuntime.isUnmodified(manifest.raw.opt("engineDistribution"),
             capabilities?.opt("legacyBridge"), capabilities?.opt("enginePatches"))) { "official_runtime_required" }
-        var rootChoice = if (!safe) RootRuntimeAccess.get(context).prepareLaunch(rootfs) else null
+        var rootChoice = if (!safe) startupStep("root probe or reuse") {
+            RootRuntimeAccess.get(context).prepareLaunch(rootfs)
+        } else null
         // Real chroot needs real files instead of PRoot's synthetic hard links.
         val tidy = rootChoice != null && L2sMigration.compatibilityReason(rootfs) != null
-        val cleanup = reapStrays(allowObservationGap = !tidy)
+        val cleanup = startupStep("process cleanup") { reapStrays(allowObservationGap = !tidy) }
         if (tidy && cleanup.complete) {
             if (!tidyLinks(binds)) { rootChoice?.cancel("root_incompatible_files"); rootChoice = null }
         } else if (tidy && rootChoice != null) {
@@ -215,6 +217,12 @@ class DshProcess(
         }
         listener.onLog("[dsh-app] moved ${(result as L2sMigration.Result.Done).links} PRoot links to real files in ${(System.nanoTime() - started) / 1_000_000} ms", "system")
         return L2sMigration.compatibilityReason(rootfs) == null
+    }
+
+    private inline fun <T> startupStep(name: String, block: () -> T): T {
+        val started = android.os.SystemClock.elapsedRealtime()
+        try { return block() }
+        finally { listener.onLog("[dsh-app] startup step: $name ${android.os.SystemClock.elapsedRealtime() - started} ms", "system") }
     }
 
     /** Waits for cleanup and exit reporting; zero waits until completion. */
