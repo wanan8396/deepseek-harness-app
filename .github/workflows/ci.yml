@@ -183,6 +183,17 @@ jobs:
       - name: Resolve locked dependencies
         working-directory: app
         run: flutter pub get --enforce-lockfile
+      # Gradle resolves its whole dependency graph on a cold runner; the shared
+      # android job caches it already, and this build repeats that work without
+      # the cache for no gain beyond isolation.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ env.GRADLE_VERSION }}-${{ hashFiles('app/android/**/*.gradle*', 'app/android/gradle/wrapper/gradle-wrapper.properties', 'app/pubspec.lock') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-${{ env.GRADLE_VERSION }}-
       - name: Compile shell only
         run: |
           # No runtime or signing material lives in this repository. This is

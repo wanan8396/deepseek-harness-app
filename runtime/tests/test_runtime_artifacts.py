@@ -81,11 +81,18 @@ class ArtifactHelpersTest(unittest.TestCase):
                 "node_modules/typescript/lib/lib.d.ts": None,
                 "typescript/lib/lib.d.mts": None, "pkg/index.ts": None,
                 "pkg/LICENSE": None, "pkg/index.js": None, "pkg/source.map": None,
+                # rc.5 publishes the TypeScript behind its emitted JavaScript.
+                # Sources in an emit directory go; a package-root .ts may be the
+                # entry point and stays.
+                "pkg/src/index.ts": "dev-source", "pkg/src/a.mts": "dev-source",
+                "pkg/lib/a.ts": "dev-source", "pkg/dist/a.cts": "dev-source",
+                "node_modules/@x/y/src/deep/a.ts": "dev-source",
             }
             for rel, expected in cases.items():
                 with self.subTest(abi=abi, rel=rel):
                     self.assertEqual(expected, artifacts.dsh_drop_reason(rel, abi, True))
-                    self.assertEqual(None if expected == "dev-metadata" else expected,
+                    # Everything dev-shaped is kept when pruning is off.
+                    self.assertEqual(None if expected in ("dev-metadata", "dev-source") else expected,
                                      artifacts.dsh_drop_reason(rel, abi, False))
 
     def test_elf32_and_elf64_have_literal_summary_contract(self):

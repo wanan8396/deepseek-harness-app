@@ -137,5 +137,23 @@ def dsh_drop_reason(rel, abi, prune_dev):
             return "dev-metadata"
         if low.endswith((".js.map", ".mjs.map", ".cjs.map", ".ts.map", ".css.map")):
             return "dev-metadata"
+        # A package that emits into src/ and lib/ also publishes the TypeScript
+        # it was built from; the runtime loads the emitted JavaScript that sits
+        # beside it. Only that layout is pruned: a top-level .ts may be a
+        # package's actual entry point, so it keeps its place in the payload.
+        if "/typescript/" not in "/" + rel and low.endswith((".ts", ".mts", ".cts")) and _under_emitted_dir(parts):
+            return "dev-source"
     return None
+
+
+def _under_emitted_dir(parts):
+    """True when a TypeScript source sits in an emit directory, not at a package root.
+
+    `src/` holds sources next to the `lib/` an emitter produced, and `lib/` holds
+    both when a package emits in place (@js-temporal/polyfill). Either way the
+    compiled `.js` beside the `.ts` is what gets imported.
+    """
+    if len(parts) < 3:
+        return False
+    return any(part in ("src", "lib", "dist", "esm", "cjs") for part in parts[:-1])
 
