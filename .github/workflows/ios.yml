@@ -339,11 +339,51 @@ jobs:
         run: |
           set -o pipefail
           flutter build ios --simulator --debug --no-pub --build-name 0.2.2 --build-number "$GITHUB_RUN_NUMBER" 2>&1 | tee "$RUNNER_TEMP/ios-flutter-build.log"
+      - name: Build the staged unsigned iPhone and iPad app
+        id: staged-device-build
+        continue-on-error: true
+        working-directory: ${{ runner.temp }}/dsh-ios-flutter/app
+        run: |
+          set -o pipefail
+          flutter build ios --release --no-codesign --no-pub --build-name 0.2.2 --build-number "$GITHUB_RUN_NUMBER" 2>&1 | tee "$RUNNER_TEMP/ios-flutter-device-build.log"
+      - name: Package the staged unsigned IPA
+        id: staged-ipa
+        if: steps.staged-device-build.outcome == 'success'
+        working-directory: ${{ runner.temp }}/dsh-ios-flutter
+        run: |
+          set -euo pipefail
+          python3 tooling/verify_ios_build.py app/build/ios/iphoneos/Runner.app --output dist/ios/device-verification.json
+          mkdir -p dist/ios
+          stage=$(mktemp -d "$RUNNER_TEMP/dsh-ios-flutter-ipa.XXXXXXXX")
+          trap 'rm -rf "$stage"' EXIT
+          mkdir "$stage/Payload"
+          ditto --norsrc app/build/ios/iphoneos/Runner.app "$stage/Payload/Runner.app"
+          ipa="$PWD/dist/ios/DeepSeek-Harness-iOS-${GITHUB_SHA:0:7}-flutter-unsigned.ipa"
+          ditto -c -k --norsrc --keepParent "$stage/Payload" "$ipa"
+          unzip -tq "$ipa"
+          python3 - "$ipa" <<'PY'
+          from pathlib import PurePosixPath
+          import plistlib, sys, zipfile
+          with zipfile.ZipFile(sys.argv[1]) as ipa:
+              for name in ipa.namelist():
+                  path = PurePosixPath(name)
+                  assert not path.is_absolute() and '..' not in path.parts and '\\' not in name
+                  assert path.parts[:2] == ('Payload', 'Runner.app') or name == 'Payload/'
+              info = plistlib.loads(ipa.read('Payload/Runner.app/Info.plist'))
+              assert info['CFBundleSupportedPlatforms'] == ['iPhoneOS'] and info['UIDeviceFamily'] == [1, 2]
+              assert 'Payload/Runner.app/' + info['CFBundleExecutable'] in ipa.namelist()
+          PY
+          (cd dist/ios && shasum -a 256 "${ipa##*/}" > "${ipa##*/}.sha256")
+          grep -q 'IosFlutterEntry' app/lib/main.dart
+          test -f app/lib/ui/chat/chat_screen.dart
+          printf 'stagedFlutterUi=true\nhistoricalChatWidgets=true\ntargetThemeAndStartupGif=true\nsigning=none\nsignedForDevice=false\nwebKitXCTestOnThisBuild=false\n' > dist/ios/build-info.txt
       - name: Publish staged verification status
         if: always()
         run: |
-          printf '{"analyze":"%s","carrierTests":"%s","simulatorBuild":"%s","historicalFlutterUi":true,"signedForDevice":false}\n' \
+          ipa_sha=$(cd "${{ runner.temp }}/dsh-ios-flutter/dist/ios" 2>/dev/null && shasum -a 256 *-flutter-unsigned.ipa 2>/dev/null | cut -d' ' -f1)
+          printf '{"analyze":"%s","carrierTests":"%s","simulatorBuild":"%s","deviceBuild":"%s","ipaSha256":"%s","historicalFlutterUi":true,"signedForDevice":false}\n' \
             '${{ steps.analyze.outcome }}' '${{ steps.carrier-tests.outcome }}' '${{ steps.staged-build.outcome }}' \
+            '${{ steps.staged-device-build.outcome }}' "${ipa_sha:-none}" \
             > "$RUNNER_TEMP/ios-flutter-status.json"
           cat "$RUNNER_TEMP/ios-flutter-status.json"
       - name: Preserve staging evidence
@@ -356,6 +396,8 @@ jobs:
             ${{ runner.temp }}/ios-flutter-analyze.log
             ${{ runner.temp }}/ios-flutter-tests.log
             ${{ runner.temp }}/ios-flutter-build.log
+            ${{ runner.temp }}/ios-flutter-device-build.log
             ${{ runner.temp }}/ios-flutter-status.json
+            ${{ runner.temp }}/dsh-ios-flutter/dist/ios/
           if-no-files-found: warn
           retention-days: 7
