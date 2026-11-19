@@ -11,7 +11,7 @@
 
 ## 当前源码状态
 
-当前源码采用官方 `@deepseek-ai/dsh@0.2.2-rc.3` 网页。同签名 ARM64 Release 已构建核验并覆盖安装；保留配置只读查看、手机依赖目录、原主题与原始启动 GIF。当前壳聚焦回归 423 项通过、20 项跳过，原生关键链 53 项通过；完整套件仍有已记录的图像基准、图标规范和 Windows 文件系统相关失败，不宣称全量通过或真机功能已全部验收。详情见[本轮清理记录](docs/maintenance/round23-compatibility-marker-removal.md)。用户报告的“新会话入口未进入新会话”尚未完成复验，不标记为已修复。实际功能与源码入口见 [PROJECT.md](PROJECT.md)。
+当前源码采用官方 `@deepseek-ai/dsh@0.2.2-rc.5` 网页。同签名 ARM64 Release 已构建核验并覆盖安装；保留配置只读查看、手机依赖目录、原主题与原始启动 GIF。当前壳聚焦回归 423 项通过、20 项跳过，原生关键链 53 项通过；完整套件仍有已记录的图像基准、图标规范和 Windows 文件系统相关失败，不宣称全量通过或真机功能已全部验收。详情见[本轮清理记录](docs/maintenance/round23-compatibility-marker-removal.md)。用户报告的“新会话入口未进入新会话”尚未完成复验，不标记为已修复。实际功能与源码入口见 [PROJECT.md](PROJECT.md)。
 
 ## 下载与安装
 

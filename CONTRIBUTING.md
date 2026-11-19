@@ -6,7 +6,7 @@
 
 安装、复用或清理工具与依赖前先读[依赖与工具目录规范](DEPENDENCIES.md)；执行者和子代理沿用其中路径分类，先复用已有工具，不在桌面DSH或用户数据目录散放新依赖。
 
-当前产品是 Android 手机壳：Flutter 负责启动、连接与权限，官方 `@deepseek-ai/dsh@0.2.2-rc.3` 网页负责对话和设置。本机每次启动自动检测真实 UID 0，条件满足优先 Root，否则回退 PRoot；没有用户可选的 Root 开关。
+当前产品是 Android 手机壳：Flutter 负责启动、连接与权限，官方 `@deepseek-ai/dsh@0.2.2-rc.5` 网页负责对话和设置。本机每次启动自动检测真实 UID 0，条件满足优先 Root，否则回退 PRoot；没有用户可选的 Root 开关。
 
 本机网页连接使用 [`dsh_client`](packages/dsh_client/README.md) 提供的轻量 HTTP/RPC/mux 与只读会话、工作区读取。先看 [PROJECT.md](PROJECT.md) 与[架构](docs/architecture.md)，再按实际调用路径确定改动范围。
 
@@ -79,7 +79,7 @@ python3 -m unittest discover -s runtime/tests -p test_runtime_artifacts.py
 
 ```bash
 python3 tooling/check_local_web_runtime.py --flavor arm64 --official
-python3 tooling/verify_local_web_release.py dist/deepseek-harness-local-0.2.2-rc.3-release.apk --output dist/release-verification.json
+python3 tooling/verify_local_web_release.py dist/deepseek-harness-local-0.2.2-rc.5-release.apk --output dist/release-verification.json
 ```
 
 网页布局可按改动选择[页头](tooling/test_web_header_layout.mjs)、[弹窗](tooling/test_web_dialog_layout.mjs)或[设置菜单](tooling/test_web_settings_menu_layout.mjs)回归。先按脚本准备其官方 rc.2 展开目录、浏览器和独立端口；这些是本地合成 DOM/输入检查，不替代手机 WebView 验收，也不验证真实账号设置的持久化。

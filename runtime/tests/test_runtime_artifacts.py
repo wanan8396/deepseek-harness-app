@@ -144,15 +144,15 @@ class OfficialArchiveIntegrationTest(unittest.TestCase):
             (runtime / "lib").mkdir(parents=True)
             shutil.copyfile(RUNTIME / "build-official-runtime.py", runtime / "build-official-runtime.py")
             shutil.copyfile(RUNTIME / "lib/runtime_artifacts.py", runtime / "lib/runtime_artifacts.py")
-            lock_dir = runtime / "locks/dsh-0.2.2-rc.3"
+            lock_dir = runtime / "locks/dsh-0.2.2-rc.5"
             lock_dir.mkdir(parents=True)
-            lock = RUNTIME / "locks/dsh-0.2.2-rc.3/package-lock.json"
+            lock = RUNTIME / "locks/dsh-0.2.2-rc.5/package-lock.json"
             shutil.copyfile(lock, lock_dir / "package-lock.json")
             prefix = root / "prefix"
             prefix.mkdir()
             shutil.copyfile(lock, prefix / "package-lock.json")
             files = {
-                "node_modules/@deepseek-ai/dsh/package.json": b'{"name":"@deepseek-ai/dsh","version":"0.2.2-rc.3"}',
+                "node_modules/@deepseek-ai/dsh/package.json": b'{"name":"@deepseek-ai/dsh","version":"0.2.2-rc.5"}',
                 "node_modules/@deepseek-ai/dsh/lib/bin.js": b'console.log("unmodified official CLI fixture");\n',
                 "node_modules/@deepseek-ai/dsh/LICENSE": b"license fixture\n",
                 "node_modules/.bin/dsh.cmd": b"host npm wrapper",

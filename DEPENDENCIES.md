@@ -121,7 +121,7 @@ dist/
 
 - 宿主Node/Python/pnpm：通过`load_workspace_dependencies`读取当前返回值，不硬改宿主安装。
 - Flutter/JDK/Android SDK：沿用第2节已配置工具链。
-- rc.3官方引擎锁：`runtime/locks/dsh-0.2.2-rc.3/`。
+- rc.3官方引擎锁：`runtime/locks/dsh-0.2.2-rc.5/`。
 - 当前APK运行时输入：`runtime/out/arm64-v8a/`。
 - 本轮rc.3临时装配与证据：`.harness-tmp-current/mobile-rc3/`。
 - 保留的原始系统构建种子：`.harness-tmp-rc2/stable-runtime-seed/`；此处是构建缓存，不是真机文件。

@@ -165,5 +165,5 @@ void mockClipboard(WidgetTester tester) => tester.binding.defaultBinaryMessenger
 
 const runningStatus = RuntimeStatus(phase: RuntimePhase.running, abi: 'arm64-v8a',
   bundledVersion: 'official-rc3-fixture', installedVersion: 'official-rc3-fixture',
-  dshVersion: '0.2.2-rc.3', nodeVersion: '24.22.1', baseUrl: 'http://127.0.0.1:3080', token: 'fixture-token');
+  dshVersion: '0.2.2-rc.5', nodeVersion: '24.22.1', baseUrl: 'http://127.0.0.1:3080', token: 'fixture-token');
 const sampleLogs = ['[dsh-app] runtime ready', 'dsh web: http://127.0.0.1:3080/?token=•••'];

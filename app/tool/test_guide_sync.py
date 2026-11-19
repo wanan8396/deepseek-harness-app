@@ -33,8 +33,8 @@ class GuideSyncTest(unittest.TestCase):
         self.repo = Path(self.temp.name)
         self.guide = self.repo / 'docs/guide'
         self.write('app/pubspec.yaml', 'name: app\nversion: 1.0.15+1\n')
-        self.write('runtime/locks/dsh-0.2.2-rc.3/package.json',
-                   json.dumps({'dependencies': {'@deepseek-ai/dsh': '0.2.2-rc.3'}}))
+        self.write('runtime/locks/dsh-0.2.2-rc.5/package.json',
+                   json.dumps({'dependencies': {'@deepseek-ai/dsh': '0.2.2-rc.5'}}))
         self.write('app/lib/l10n/parts/hub_zh.arb', json.dumps(
             {'commonSettings': '设置', 'hubSettingsEngine': '引擎', 'phoneEngineStart': '启动', 'count': '{n} 个'}))
         self.write('app/lib/l10n/parts/hub_en.arb', json.dumps(
@@ -43,7 +43,7 @@ class GuideSyncTest(unittest.TestCase):
         self.write(f'{res}/values-zh/s.xml', '<resources><string name="stop">停止操作</string></resources>')
         self.write(f'{res}/values/s.xml', '<resources><string name="stop">Stop actions</string></resources>')
         self.write('docs/guide/SKILL.md', SKILL)
-        self.write('docs/guide/README.md', '# DeepSeek harness guide\n\n> DeepSeek harness 0.2.2-rc.3\n\n- [引擎](zh/01-engine.md)\n- [Engine](en/01-engine.md)\n')
+        self.write('docs/guide/README.md', '# DeepSeek harness guide\n\n> DeepSeek harness 0.2.2-rc.5\n\n- [引擎](zh/01-engine.md)\n- [Engine](en/01-engine.md)\n')
         for locale, text in PAGE.items():
             self.write(f'docs/guide/{locale}/01-engine.md', text)
             self.write(f'docs/guide/{locale}/02-settings.md', '# Settings\n')
@@ -70,7 +70,7 @@ class GuideSyncTest(unittest.TestCase):
         assets = self.repo / 'app/assets/skills/dsh-app-guide'
         manifest = json.loads((assets / 'manifest.json').read_text())
         self.assertEqual(manifest['name'], 'deepseek-harness-guide')
-        self.assertEqual(manifest['dshVersion'], '0.2.2-rc.3')
+        self.assertEqual(manifest['dshVersion'], '0.2.2-rc.5')
         self.assertEqual(manifest['files']['zh-01-engine.md'], 'zh/01-engine.md')
         self.assertEqual(set(manifest['files']), {p.name for p in assets.iterdir()} - {'manifest.json'})
         for flat, target in manifest['files'].items():
@@ -128,36 +128,36 @@ class GuideSyncTest(unittest.TestCase):
 
     def test_readme_version_must_match_official_dependency(self):
         self.write('docs/guide/README.md', '> DeepSeek harness 0.2.2-rc.2\n')
-        self.assertFails('`> DeepSeek harness 0.2.2-rc.3`')
-        self.assertFails('runtime/locks/dsh-0.2.2-rc.3/package.json @deepseek-ai/dsh')
+        self.assertFails('`> DeepSeek harness 0.2.2-rc.5`')
+        self.assertFails('runtime/locks/dsh-0.2.2-rc.5/package.json @deepseek-ai/dsh')
 
     def test_existing_runtime_manifest_must_match_official_dependency(self):
         self.write('runtime/out/arm64-v8a/assets/runtime/manifest.json',
-                   json.dumps({'dshVersion': '0.2.2-rc.3', 'runtimeVersion': 'packaging-id'}))
+                   json.dumps({'dshVersion': '0.2.2-rc.5', 'runtimeVersion': 'packaging-id'}))
         self.assertEqual(self.errors(), [])
         self.assertEqual(guide_sync.run(self.repo, write=True), [])
         self.write('runtime/out/arm64-v8a/assets/runtime/manifest.json',
                    json.dumps({'dshVersion': '0.2.2-rc.2'}))
-        with self.assertRaisesRegex(ValueError, 'dshVersion must match .*0.2.2-rc.3'):
+        with self.assertRaisesRegex(ValueError, 'dshVersion must match .*0.2.2-rc.5'):
             self.errors()
 
     def test_official_dependency_must_be_an_exact_version(self):
-        for value in (None, '', 2, '^0.2.2-rc.3', '~0.2.2', 'latest', '0.2.2 rc.3', '0.2.2-rc.3\n'):
+        for value in (None, '', 2, '^0.2.2-rc.5', '~0.2.2', 'latest', '0.2.2 rc.3', '0.2.2-rc.5\n'):
             with self.subTest(value=value):
-                self.write('runtime/locks/dsh-0.2.2-rc.3/package.json',
+                self.write('runtime/locks/dsh-0.2.2-rc.5/package.json',
                            json.dumps({'dependencies': {'@deepseek-ai/dsh': value}}))
                 with self.assertRaisesRegex(ValueError, 'must be an exact version'):
                     self.errors()
         for data in ({}, [], {'dependencies': []}, {'dependencies': {}}):
             with self.subTest(data=data):
-                self.write('runtime/locks/dsh-0.2.2-rc.3/package.json', json.dumps(data))
+                self.write('runtime/locks/dsh-0.2.2-rc.5/package.json', json.dumps(data))
                 with self.assertRaisesRegex(ValueError, 'must be an exact version'):
                     self.errors()
 
     def test_runtime_manifest_does_not_replace_missing_official_lock(self):
         self.write('runtime/out/arm64-v8a/assets/runtime/manifest.json',
-                   json.dumps({'dshVersion': '0.2.2-rc.3'}))
-        (self.repo / 'runtime/locks/dsh-0.2.2-rc.3/package.json').unlink()
+                   json.dumps({'dshVersion': '0.2.2-rc.5'}))
+        (self.repo / 'runtime/locks/dsh-0.2.2-rc.5/package.json').unlink()
         with self.assertRaises(FileNotFoundError):
             self.errors()
 
@@ -168,17 +168,17 @@ class GuideSyncTest(unittest.TestCase):
         self.assertEqual(self.errors(), [])
 
     def test_duplicate_runtime_version_markers_fail(self):
-        self.write('docs/guide/README.md', '> DeepSeek harness 0.2.2-rc.3\n' * 2)
+        self.write('docs/guide/README.md', '> DeepSeek harness 0.2.2-rc.5\n' * 2)
         self.assertFails('want one line')
 
     def test_existing_runtime_manifest_requires_matching_dsh_version(self):
-        for value in (None, '', 2, '0.2.2 rc.3', '0.2.2-rc.3\n'):
+        for value in (None, '', 2, '0.2.2 rc.3', '0.2.2-rc.5\n'):
             with self.subTest(value=value):
                 self.write('runtime/out/arm64-v8a/assets/runtime/manifest.json',
                            json.dumps({'dshVersion': value}))
                 with self.assertRaisesRegex(ValueError, 'dshVersion must match'):
                     self.errors()
-        for data in ([], {'runtimeVersion': '0.2.2-rc.3'}):
+        for data in ([], {'runtimeVersion': '0.2.2-rc.5'}):
             with self.subTest(data=data):
                 self.write('runtime/out/arm64-v8a/assets/runtime/manifest.json', json.dumps(data))
                 with self.assertRaisesRegex(ValueError, 'dshVersion must match'):
@@ -217,9 +217,9 @@ class RepositoryGuideTest(unittest.TestCase):
             for directory in ('docs/guide', 'app/lib/l10n/parts',
                               'app/android/app/src/main/res', 'app/assets/skills/dsh-app-guide'):
                 shutil.copytree(REPO / directory, repo / directory)
-            package = repo / 'runtime/locks/dsh-0.2.2-rc.3/package.json'
+            package = repo / 'runtime/locks/dsh-0.2.2-rc.5/package.json'
             package.parent.mkdir(parents=True)
-            shutil.copyfile(REPO / 'runtime/locks/dsh-0.2.2-rc.3/package.json', package)
+            shutil.copyfile(REPO / 'runtime/locks/dsh-0.2.2-rc.5/package.json', package)
             self.assertFalse((repo / 'runtime/out').exists())
             self.assertFalse((repo / 'app/lib/links').exists())
             self.assertFalse((repo / 'app/lib/ui/settings').exists())
@@ -233,7 +233,7 @@ class RepositoryGuideTest(unittest.TestCase):
         }
         manifest = json.loads((REPO / 'app/assets/skills/dsh-app-guide/manifest.json')
                               .read_text(encoding='utf-8'))
-        package = json.loads((REPO / 'runtime/locks/dsh-0.2.2-rc.3/package.json')
+        package = json.loads((REPO / 'runtime/locks/dsh-0.2.2-rc.5/package.json')
                              .read_text(encoding='utf-8'))
         self.assertEqual(manifest['dshVersion'], package['dependencies']['@deepseek-ai/dsh'])
         self.assertEqual(manifest['name'], 'deepseek-harness-guide')

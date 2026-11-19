@@ -101,7 +101,7 @@ class BuildApkDryRunTest(unittest.TestCase):
         for abi in ('arm64-v8a', 'x86_64'):
             assets = self.root / 'runtime/out' / abi / 'assets/runtime'
             assets.mkdir(parents=True)
-            (assets / 'manifest.json').write_text(json.dumps({'dshVersion': '0.2.2-rc.3'}), encoding='utf-8')
+            (assets / 'manifest.json').write_text(json.dumps({'dshVersion': '0.2.2-rc.5'}), encoding='utf-8')
         self.script = tooling / 'build-apk.sh'
 
     def run_script(self, *args: str) -> subprocess.CompletedProcess:
@@ -122,7 +122,7 @@ class BuildApkDryRunTest(unittest.TestCase):
         self.assertIn("--flavor x64 --target-platform android-x64", commands[1])
         for c in commands:
             self.assertRegex(c, rf"--build-name (\S+) --build-number {code} --dart-define=DSH_APP_VERSION=\1\+{code}")
-            self.assertIn('--build-name 0.2.2-rc.3', c)
+            self.assertIn('--build-name 0.2.2-rc.5', c)
             self.assertNotIn('--dart-define=DSH_LOCAL_WEB_LITE=true', c)
             self.assertNotIn('DSH_BETA_CHANNEL_TOKEN', c)
         self.assertIn("gradlew --stop", out)

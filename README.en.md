@@ -11,7 +11,7 @@ Run DeepSeek Harness on an Android phone or open the DSH webpage already running
 
 ## Current source status
 
-The current source uses the official `@deepseek-ai/dsh@0.2.2-rc.3` webpage. Same-certificate ARM64 Release has been built, verified and installed over the previous app, retaining the read-only configuration viewer, private dependency layout, original theme and startup GIF. Focused shell regressions passed 423 tests with 20 skips, and 53 key native tests passed. Full suites still have documented golden-image, icon-role and Windows-filesystem failures; neither full-suite success nor complete device acceptance is claimed. See the [latest cleanup record](docs/maintenance/round23-compatibility-marker-removal.md). The reported New conversation navigation failure has not been reverified and is not marked as fixed. See [PROJECT.md](PROJECT.md) for actual functionality and source entry points.
+The current source uses the official `@deepseek-ai/dsh@0.2.2-rc.5` webpage. Same-certificate ARM64 Release has been built, verified and installed over the previous app, retaining the read-only configuration viewer, private dependency layout, original theme and startup GIF. Focused shell regressions passed 423 tests with 20 skips, and 53 key native tests passed. Full suites still have documented golden-image, icon-role and Windows-filesystem failures; neither full-suite success nor complete device acceptance is claimed. See the [latest cleanup record](docs/maintenance/round23-compatibility-marker-removal.md). The reported New conversation navigation failure has not been reverified and is not marked as fixed. See [PROJECT.md](PROJECT.md) for actual functionality and source entry points.
 
 ## Download and install
 

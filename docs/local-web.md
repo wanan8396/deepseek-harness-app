@@ -4,7 +4,7 @@
 
 - **包名：** `app.dsh`
 - **应用名：** DeepSeek harness
-- **显示版本：** 来自实际内置运行时清单中的 `dshVersion`，例如 `0.2.2-rc.3`；Android 构建编号继续递增。
+- **显示版本：** 来自实际内置运行时清单中的 `dshVersion`，例如 `0.2.2-rc.5`；Android 构建编号继续递增。
 - **维护仓库：** [wanan8396/deepseek-harness-source](https://github.com/wanan8396/deepseek-harness-source)（私有）。来源与原作者见[署名和许可](ATTRIBUTION.md)。
 
 > 本页介绍当前版本的界面与本机启动方式。当前源码每次本机启动自动检测真实 UID 0，条件满足优先 Root，否则回退 PRoot；没有手动 Root 选择。安装包功能范围以该 Release 说明和附件为准。
@@ -35,7 +35,7 @@
 - 网页设置使用系统安全区，不重复预留原生菜单与底部鲸鱼空间。显示网页弹窗时原生悬浮控件暂时隐藏，关闭后恢复；长欢迎说明独立滚动，勾选与确认区域保持可见。
 - 电脑网页模式不构造本机初始化页，也不读取本机运行时 Provider；用户选择的 HTTP 局域网 URL 在当前壳网络配置中放行，HTTPS 证书校验保持平台默认。
 - 初次权限引导包括所需文件/通知/后台能力，可以跳过；Root 由每次本机启动自动检测，权限页没有 Root 开关，见下节。相机在主动扫码时申请。权限未授予时由实际操作提示，不在设置堆放开关。文件、通知与系统电池豁免显示真实读取结果；厂商“允许后台行为”等无读取接口的项目提供“查看设置”和“我已开启”，手动确认显示“已确认开启”，与系统检测结果区分。仅打开设置或返回不自动视为已授权。
-- 本机引擎采用官方 `@deepseek-ai/dsh@0.2.2-rc.3`，网页、插件与会话接口使用官方实现。
+- 本机引擎采用官方 `@deepseek-ai/dsh@0.2.2-rc.5`，网页、插件与会话接口使用官方实现。
 
 当前仓库只有这一种 Android 手机壳产品，构建时不需要产品模式切换标记。
 
@@ -69,7 +69,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tooling\build-local-web-ap
 
 正式构建要求本机配置 `app/android/key.properties`，包含 `storeFile`、`storePassword`、`keyAlias`、`keyPassword`；`storeFile` 相对 `app/android/app` 解析。密钥与配置已被 Git 排除，缺失时正式构建立刻停止。发布者须自行保管原发布密钥以维持后续升级签名一致；旧 debug 测试包使用不同证书，不自动卸载或清除其数据。
 
-正式包可用 `python tooling/verify_local_web_release.py dist/deepseek-harness-local-0.2.2-rc.3-release.apk --output dist/release-verification.json` 核验：非 debuggable、ARM64 AOT、签名和实际内置资产。
+正式包可用 `python tooling/verify_local_web_release.py dist/deepseek-harness-local-0.2.2-rc.5-release.apk --output dist/release-verification.json` 核验：非 debuggable、ARM64 AOT、签名和实际内置资产。
 
 **Linux：**
 

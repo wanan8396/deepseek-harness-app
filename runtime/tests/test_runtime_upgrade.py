@@ -31,7 +31,7 @@ class RuntimeUpgradePackaging(unittest.TestCase):
         }
 
     def describe(self, seed):
-        identity = {'name': '@deepseek-ai/dsh', 'version': '0.2.2-rc.3',
+        identity = {'name': '@deepseek-ai/dsh', 'version': '0.2.2-rc.5',
                     'registry': 'https://registry.npmjs.org/', 'lockSha256': 'b' * 64}
         with patch.object(builder, 'official_identity', return_value=identity):
             return builder.describe_official_manifest(seed, Path('unused-prefix'))

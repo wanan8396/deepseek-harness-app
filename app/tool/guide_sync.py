@@ -38,7 +38,7 @@ SPAN = re.compile(r'`([^`\n]+)`')
 BOLD = re.compile(r'\*\*([^*\n]+)\*\*')
 LINK = re.compile(r'\]\(([^)\s]+)\)')
 VERSION_LINE = re.compile(r'^> DeepSeek harness (\S+)$', re.MULTILINE)
-OFFICIAL_PACKAGE = Path('runtime/locks/dsh-0.2.2-rc.3/package.json')
+OFFICIAL_PACKAGE = Path('runtime/locks/dsh-0.2.2-rc.5/package.json')
 EXACT_VERSION = re.compile(r'(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)'
                            r'(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?'
                            r'(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?')

@@ -6,7 +6,7 @@
 
 Before installing, reusing or cleaning dependencies, read the shared [dependency and tool directory policy](DEPENDENCIES.md). Executors and subagents use its path categories and reuse existing tools rather than placing new dependencies in Desktop DSH or user-data directories.
 
-The product is a single Android phone shell: Flutter owns startup, connections and permissions, while the official `@deepseek-ai/dsh@0.2.2-rc.3` webpage owns conversations and settings. Every local start checks for real UID 0, preferring Root when launch requirements pass and falling back to PRoot otherwise. There is no user-selectable Root switch.
+The product is a single Android phone shell: Flutter owns startup, connections and permissions, while the official `@deepseek-ai/dsh@0.2.2-rc.5` webpage owns conversations and settings. Every local start checks for real UID 0, preferring Root when launch requirements pass and falling back to PRoot otherwise. There is no user-selectable Root switch.
 
 The local webpage connection uses [`dsh_client`](packages/dsh_client/README.md) for lightweight HTTP/RPC/mux access and read-only session/workspace data. Read [PROJECT.md](PROJECT.md) and [architecture](docs/architecture.md), then scope changes using the actual call paths.
 
@@ -79,7 +79,7 @@ python3 -m unittest discover -s runtime/tests -p test_runtime_artifacts.py
 
 ```bash
 python3 tooling/check_local_web_runtime.py --flavor arm64 --official
-python3 tooling/verify_local_web_release.py dist/deepseek-harness-local-0.2.2-rc.3-release.apk --output dist/release-verification.json
+python3 tooling/verify_local_web_release.py dist/deepseek-harness-local-0.2.2-rc.5-release.apk --output dist/release-verification.json
 ```
 
 For web layout changes, select the [header](tooling/test_web_header_layout.mjs), [dialog](tooling/test_web_dialog_layout.mjs) or [settings-menu](tooling/test_web_settings_menu_layout.mjs) regression. First prepare the extracted official rc.2 packages, browser and dedicated port expected by that script. These are local synthetic DOM/input checks, not phone-WebView acceptance or persistence checks against real account settings.

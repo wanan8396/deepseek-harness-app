@@ -4,7 +4,7 @@
 
 - Package: `app.dsh`
 - App name: DeepSeek harness
-- Display version: the bundled runtime's `dshVersion`, such as `0.2.2-rc.3`; the Android build number remains monotonically increasing.
+- Display version: the bundled runtime's `dshVersion`, such as `0.2.2-rc.5`; the Android build number remains monotonically increasing.
 - Repository: [wanan8396/deepseek-harness-source](https://github.com/wanan8396/deepseek-harness-source) (private). See [attribution and licenses](ATTRIBUTION.en.md) for source authorship.
 
 > This page covers the interface and local startup. Every local start in the current source checks for real UID 0, preferring Root when launch requirements pass and falling back to PRoot otherwise; there is no manual Root selection. Each Release's notes and attachments define its shipped features.
@@ -27,7 +27,7 @@ History retains host/name/last-used time. Preference URLs omit query and fragmen
 - Web settings use the system-safe viewport without duplicate native control reserves. Visible web dialogs temporarily hide native floating controls, restoring them on close. Long welcome text scrolls independently of the checkbox and confirmation area.
 - Computer mode does not construct local setup or read the local runtime provider. Explicit HTTP LAN URLs work in the current shell's network configuration; HTTPS retains platform certificate validation.
 - Initial file/notification/background permissions may be skipped. Root is checked automatically at each local start, with no Root switch on the permission page, as described below. Camera permission is requested for an explicit scan. Missing permissions are explained at the operation, not scattered across settings switches. Files, notifications and system battery exemption use actual readings. Vendor switches without a read API offer View settings and I've enabled it; an explicit confirmation is shown separately from system-detected grants. Opening or returning from settings alone is not treated as a grant.
-- The local engine uses official `@deepseek-ai/dsh@0.2.2-rc.3`; web, plugin and session APIs use the official implementation.
+- The local engine uses official `@deepseek-ai/dsh@0.2.2-rc.5`; web, plugin and session APIs use the official implementation.
 
 This is the repository's only Android shell product; no product-mode define is required.
 
@@ -61,7 +61,7 @@ The script regenerates brand assets, verifies the official runtime and uses an A
 
 Release builds require a local `app/android/key.properties` with `storeFile`, `storePassword`, `keyAlias` and `keyPassword`; the store path is relative to `app/android/app`. Both configuration and private keystores are excluded from Git, and missing release signing stops the build. Keep the same release key for future upgrades. Older debug test builds use another certificate; this process does not uninstall them or erase their data.
 
-Run `python tooling/verify_local_web_release.py dist/deepseek-harness-local-0.2.2-rc.3-release.apk --output dist/release-verification.json` to check non-debuggable ARM64 AOT output, the release certificate and bundled assets.
+Run `python tooling/verify_local_web_release.py dist/deepseek-harness-local-0.2.2-rc.5-release.apk --output dist/release-verification.json` to check non-debuggable ARM64 AOT output, the release certificate and bundled assets.
 
 Linux:
 

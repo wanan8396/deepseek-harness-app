@@ -8,9 +8,9 @@ DeepSeek harness 是面向 Android 的 DSH 网页手机壳。Flutter 负责启�
 
 - 应用名：DeepSeek harness。
 - Android 包名：`app.dsh`。
-- 当前内置引擎：未修改的官方 `@deepseek-ai/dsh@0.2.2-rc.3`。
+- 当前内置引擎：未修改的官方 `@deepseek-ai/dsh@0.2.2-rc.5`。
 - 当前产品只有这一个 Android 手机壳构建。
-- 最近确认覆盖安装的正式版为 `0.2.2-rc.3`，构建号 `11141326`，ARM64，已在手机启动。
+- 最近确认覆盖安装的正式版为 `0.2.2-rc.5`，构建号 `11141326`，ARM64，已在手机启动。
 - 本包保留配置只读查看及手机私有依赖目录，修复安装日志弹层短日志贴底导致的顶部留白；日志布局已通过真实widget回归，安装完成后的手机同入口未强制重现。
 - 手机正常web profile已安装GitHub最新Purge rc.3，重启后状态接口HTTP 200、ready=true；不随APK内置，也不修改桌面安装。
 - 新源码仓库：`wanan8396/deepseek-harness-source`，私有。APK并未随源码自动发布。
@@ -51,7 +51,7 @@ DeepSeek harness 是面向 Android 的 DSH 网页手机壳。Flutter 负责启�
 | `app/android/app/src/main/kotlin/app/dsh/runtime/` | 运行时安装、启动和指南同步 |
 | `app/android/app/src/main/kotlin/app/dsh/rootruntime/` | Root启动实现 |
 | `runtime/build-official-runtime.py` | 官方运行时组装 |
-| `runtime/locks/dsh-0.2.2-rc.3/` | 官方版本与依赖锁 |
+| `runtime/locks/dsh-0.2.2-rc.5/` | 官方版本与依赖锁 |
 | `tooling/build-local-web-apk.ps1` | Windows手机壳构建入口 |
 | `tooling/build-local-web-apk.sh` | Linux手机壳构建入口 |
 

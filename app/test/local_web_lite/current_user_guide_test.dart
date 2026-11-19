@@ -7,7 +7,7 @@ void main() {
   test('current guide ships matching bilingual official runtime pages, not legacy feature instructions', () {
     const base = 'assets/skills/dsh-app-guide/';
     final manifest = jsonDecode(File('${base}manifest.json').readAsStringSync()) as Map;
-    expect(manifest['dshVersion'], '0.2.2-rc.3');
+    expect(manifest['dshVersion'], '0.2.2-rc.5');
     expect(manifest['name'], 'deepseek-harness-guide');
     final skill = File('${base}SKILL.md').readAsStringSync();
     expect(skill, contains('name: deepseek-harness-guide'));

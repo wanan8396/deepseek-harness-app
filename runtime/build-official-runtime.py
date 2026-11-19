@@ -24,7 +24,7 @@ from collections import Counter
 
 ROOT = Path(__file__).resolve().parents[1]
 EPOCH = 1767225600
-OFFICIAL_VERSION = "0.2.2-rc.3"
+OFFICIAL_VERSION = "0.2.2-rc.5"
 ENGINE_PATHS = [
     "opt/dsh", "opt/node", "etc/dsh-app",
     "etc/profile.d/dsh-app.sh", "usr/local/lib/node_modules/pnpm",
@@ -82,7 +82,7 @@ def describe_official_manifest(seed: dict, prefix: Path) -> dict:
     upgrade = copy.deepcopy(descriptor)
     upgrade["paths"] = list(ENGINE_PATHS)
     runtime = {
-        "runtimeVersion": f"r17-official-dsh{OFFICIAL_VERSION}-node{seed['nodeVersion']}-{identity['lockSha256'][:12]}",
+        "runtimeVersion": f"r18-official-dsh{OFFICIAL_VERSION}-node{seed['nodeVersion']}-{identity['lockSha256'][:12]}",
         "abi": seed["abi"], "dshVersion": OFFICIAL_VERSION,
         "nodeVersion": seed["nodeVersion"], "pnpmVersion": seed["pnpmVersion"],
         "ubuntuVersion": seed["ubuntuVersion"], "prootVersion": seed["prootVersion"],

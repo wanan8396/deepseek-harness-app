@@ -1,10 +1,10 @@
 # DeepSeek harness 使用说明 · User guide
 
-> DeepSeek harness 0.2.2-rc.3
+> DeepSeek harness 0.2.2-rc.5
 
 ## 适用范围
 
-本说明适用于搭载官方 DeepSeek harness 0.2.2-rc.3 运行时的 Android 手机壳。首页就是官方网页；手机壳负责本机启动、手机布局、系统权限以及电脑网页连接。模型、对话、插件和自动化任务由当前网页所连接的引擎管理。
+本说明适用于搭载官方 DeepSeek harness 0.2.2-rc.5 运行时的 Android 手机壳。首页就是官方网页；手机壳负责本机启动、手机布局、系统权限以及电脑网页连接。模型、对话、插件和自动化任务由当前网页所连接的引擎管理。
 
 适用版本以源码中官方依赖锁的 `@deepseek-ai/dsh` 精确版本为准；随包运行时清单的 `dshVersion` 必须与之相同，不取旧 App 工程的版本号。电脑网页可能运行其他版本，按钮与可用项目以那台电脑实际提供的页面为准。
 
@@ -25,7 +25,7 @@
 
 ## Applies to
 
-This guide covers the Android phone shell bundled with the official DeepSeek harness 0.2.2-rc.3 runtime. Home is the official web interface. The shell handles local startup, phone layout, system permissions and computer webpage connections. The engine behind the current webpage owns models, conversations, plugins and automation tasks.
+This guide covers the Android phone shell bundled with the official DeepSeek harness 0.2.2-rc.5 runtime. Home is the official web interface. The shell handles local startup, phone layout, system permissions and computer webpage connections. The engine behind the current webpage owns models, conversations, plugins and automation tasks.
 
 The supported version is the exact `@deepseek-ai/dsh` version in the source repository's official dependency lock. The bundled runtime manifest's `dshVersion` must match it; the old app project's version field is not used. A computer may run another version; its actual webpage determines available controls.
 

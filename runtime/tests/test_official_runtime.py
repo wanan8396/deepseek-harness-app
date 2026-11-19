@@ -13,8 +13,8 @@ SPEC.loader.exec_module(builder)
 
 
 class OfficialRuntimeBuilderTest(unittest.TestCase):
-    def test_current_release_is_pinned_to_official_rc3(self):
-        self.assertEqual("0.2.2-rc.3", builder.OFFICIAL_VERSION)
+    def test_current_release_is_pinned_to_official_rc5(self):
+        self.assertEqual("0.2.2-rc.5", builder.OFFICIAL_VERSION)
 
     def test_archive_names_reject_escape_absolute_and_backslash(self):
         for name in ("/etc/passwd", "../x", "a/../x", "a\\b", "", "."):

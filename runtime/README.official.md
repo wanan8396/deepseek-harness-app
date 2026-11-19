@@ -6,7 +6,7 @@ engine patches, Direct preload, or boot cache.
 
 ## Inputs and reproducibility
 
-- `runtime/locks/dsh-0.2.2-rc.3/` pins the official CLI and the complete dependency graph.
+- `runtime/locks/dsh-0.2.2-rc.5/` pins the official CLI and the complete dependency graph.
 - Install a new prefix for **Linux / arm64 / glibc**. Preserve optional dependencies:
 
   ```powershell
@@ -58,6 +58,11 @@ the output archive. The installer checks the installed system identity rather
 than replaying its former mutation list, and no longer adopts systems without a
 current upgrade descriptor. Unknown or incomplete transactions stop without
 falling back to replacing the user's whole Linux filesystem.
+
+The r18 payload upgrades the official npm engine from `0.2.2-rc.3` to
+`0.2.2-rc.5`, so its `@deepseek-ai/dsh-*` files change; the system executables,
+JNI inputs and the 14-engine-path upgrade contract are unchanged. These changes
+do not patch the official npm engine.
 
 The r17 wrapper archive differs from the preceding r16 payload only by removal
 of its obsolete empty engine directory and an updated `etc/dsh-app/runtime.json`.

@@ -190,7 +190,7 @@ jobs:
           # Local assembly must add and verify the unchanged runtime payload,
           # zipalign, sign with the installed app's key and verify the result.
           code=$(python3 tooling/build_number.py)
-          version=$(python3 -c 'import json; print(json.load(open("runtime/locks/dsh-0.2.2-rc.3/package.json"))["dependencies"]["@deepseek-ai/dsh"])')
+          version=$(python3 -c 'import json; print(json.load(open("runtime/locks/dsh-0.2.2-rc.5/package.json"))["dependencies"]["@deepseek-ai/dsh"])')
           (cd app && flutter build apk --release --flavor arm64 --target-platform android-arm64 --build-name "$version" --build-number "$code" --dart-define="DSH_APP_VERSION=$version+$code")
           mkdir -p dist
           cp app/build/app/outputs/flutter-apk/app-arm64-release.apk dist/deepseek-harness-arm64-shell-NOT-INSTALLABLE.apk
