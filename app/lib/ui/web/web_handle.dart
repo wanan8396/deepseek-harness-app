@@ -21,6 +21,19 @@ class WebHandleButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final tooltip = context.l10n.webChatsWorkspaces;
     final dark = Theme.of(context).brightness == Brightness.dark;
+    final mark = Image.asset(
+      dark ? 'assets/branding/whale-dark.png' : 'assets/branding/whale.png',
+      width: size * 0.65,
+      height: size * 0.65,
+      fit: BoxFit.contain,
+      excludeFromSemantics: true,
+    );
+    // A disabled handle is decoration, not a control: it must not swallow a tap
+    // meant for the webpage underneath it (the sidebar's archive action sits
+    // exactly here once it is open).
+    if (onSidebar == null) {
+      return SizedBox.square(dimension: size, child: Center(child: mark));
+    }
     return Tooltip(
       message: tooltip,
       child: Semantics(
@@ -34,15 +47,7 @@ class WebHandleButton extends StatelessWidget {
             child: InkWell(
               borderRadius: BorderRadius.circular(10),
               onTap: onSidebar,
-              child: Center(
-                child: Image.asset(
-                  dark ? 'assets/branding/whale-dark.png' : 'assets/branding/whale.png',
-                  width: size * 0.65,
-                  height: size * 0.65,
-                  fit: BoxFit.contain,
-                  excludeFromSemantics: true,
-                ),
-              ),
+              child: Center(child: mark),
             ),
           ),
         ),
@@ -68,16 +73,32 @@ class WebBottomHandle extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final padding = MediaQuery.viewPaddingOf(context);
-    final body = ColoredBox(
-      color: Colors.transparent,
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(padding.left + edge, 0, padding.right + edge, bottomInset(padding.bottom)),
-        child: SizedBox(
-          height: height,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [handle(buttonSize), const WebConnectionButton()],
-          ),
+    // Only the two controls take the touch. A box spanning the row would, even
+    // at `Colors.transparent`, because `ColoredBox` hit-tests as opaque: every
+    // tap that landed on the webpage under this band (the sidebar's archive
+    // action, most of all) reached an invisible layer instead of its own
+    // control. Nothing is laid out across the row here, so the space between
+    // the buttons passes straight through to the page, and a button with no
+    // handler (`onSidebar == null`) passes through as well.
+    final body = Padding(
+      padding: EdgeInsets.fromLTRB(padding.left + edge, 0, padding.right + edge, bottomInset(padding.bottom)),
+      child: SizedBox(
+        height: height,
+        child: Stack(
+          children: [
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              child: Center(child: handle(buttonSize)),
+            ),
+            const Positioned(
+              right: 0,
+              top: 0,
+              bottom: 0,
+              child: Center(child: WebConnectionButton()),
+            ),
+          ],
         ),
       ),
     );
