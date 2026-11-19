@@ -1,0 +1,13 @@
+// The staged app entry owns the live Host. DshApp's fallback is diagnostic-only.
+import 'package:flutter/widgets.dart';
+
+import '../ios/ios_local_engine_page.dart';
+
+class RootGate extends StatelessWidget {
+  const RootGate({super.key, this.home});
+
+  final Widget? home;
+
+  @override
+  Widget build(BuildContext context) => home ?? const IosLocalEnginePage();
+}

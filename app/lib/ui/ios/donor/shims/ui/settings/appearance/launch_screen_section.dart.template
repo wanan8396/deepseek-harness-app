@@ -1,0 +1,27 @@
+// Retain the target's startup GIF. Donor launch configuration is Android-only.
+import 'package:flutter/material.dart';
+
+import '../../../l10n/l10n.dart';
+import '../../launch/launch_preview_page.dart';
+import '../settings_widgets.dart';
+
+class LaunchScreenSection extends StatelessWidget {
+  const LaunchScreenSection({super.key});
+
+  @override
+  Widget build(BuildContext context) => SettingsTile(
+    title: context.l10n.launchPreview,
+    onTap: () => showLaunchPreview(context),
+  );
+}
+
+// Geometry shared by the original wallpaper mini-previews.
+abstract final class LaunchScreenPicker {
+  static const ring = 2.0;
+  static const ringGap = 3.0;
+  static const room = ring + ringGap;
+  static const radius = 14.0;
+
+  static double aspectFor(Size screen) =>
+      screen.height <= 0 ? 0.5 : (screen.width / screen.height).clamp(0.45, 0.62).toDouble();
+}

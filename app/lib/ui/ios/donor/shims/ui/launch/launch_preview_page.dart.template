@@ -1,0 +1,11 @@
+// iOS stages the target's original GIF, not the donor's custom launch media.
+import 'package:flutter/material.dart';
+
+import '../../l10n/l10n.dart';
+import '../web/startup_cover.dart';
+
+Future<void> showLaunchPreview(BuildContext context) async {
+  await Navigator.of(context).push<void>(MaterialPageRoute<void>(
+    builder: (page) => Scaffold(appBar: AppBar(title: Text(page.l10n.launchPreview)), body: const StartupStage()),
+  ));
+}

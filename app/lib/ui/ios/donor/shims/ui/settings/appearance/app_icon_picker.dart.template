@@ -1,0 +1,218 @@
+// iOS staging replacement for the historical launcher-icon picker.
+//
+// The pinned donor draws these options from `brand_glyph.g.dart`, generated
+// from third-party brand art that this repository does not redistribute. The
+// AppIcon API, the picker layout and the preview widget stay identical; the
+// glyph uses the target's existing whale so callers (appearance page,
+// launch screen section, icon shortcut sheet) keep working.
+import 'dart:async';
+import 'dart:math' as math;
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../l10n/l10n.dart';
+import '../../../state/app_icon_state.dart';
+import '../../common/pressable.dart';
+import '../../shell/brand_mark.dart';
+
+/// The four launcher options in a row, the one in use ringed in the accent.
+class AppIconPicker extends ConsumerWidget {
+  const AppIconPicker({super.key, this.padding = const EdgeInsets.all(16)});
+
+  final EdgeInsetsGeometry padding;
+
+  static const gap = 12.0;
+  static const ring = 2.0;
+  static const ringGap = 3.0;
+  static const maxIcon = 56.0;
+  static const labelGap = 8.0;
+
+  static double iconFor(double width) => math.min(maxIcon, width - 2 * (ring + ringGap));
+  static double extent(double icon) => icon + 2 * (ring + ringGap);
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(appIconProvider).value;
+    return Padding(
+      padding: padding,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final column = (constraints.maxWidth - gap * (AppIcon.values.length - 1)) / AppIcon.values.length;
+          final icon = iconFor(column);
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final (i, choice) in AppIcon.values.indexed) ...[
+                if (i > 0) const SizedBox(width: gap),
+                Expanded(
+                  child: _Option(
+                    icon: choice,
+                    size: icon,
+                    mask: state?.mask,
+                    selected: state?.current == choice,
+                    onTap: state == null || state.current == choice
+                        ? null
+                        : () => unawaited(_select(context, ref, choice)),
+                  ),
+                ),
+              ],
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _select(BuildContext context, WidgetRef ref, AppIcon icon) async {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final ok = await ref.read(appIconProvider.notifier).select(icon);
+    if (ok) {
+      messenger?.showSnackBar(SnackBar(content: Text(context.l10n.pluginsIconChanged)));
+    } else {
+      messenger
+        ?..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(context.l10n.pluginsIconChangeFailed)));
+    }
+  }
+}
+
+class _Option extends StatelessWidget {
+  const _Option({
+    required this.icon,
+    required this.size,
+    required this.mask,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final AppIcon icon;
+  final double size;
+  final List<double>? mask;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: AppIconPicker.extent(size),
+          height: AppIconPicker.extent(size),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              if (selected) _Ring(size: size),
+              Pressable(
+                onTap: onTap,
+                child: AppIconPreview(icon, size: size, mask: mask),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: AppIconPicker.labelGap),
+        Text(
+          icon.label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: selected ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// The launcher's icon shape at [side] × [side]: [mask] (a closed outline in
+/// 0…1 from the system) or, without one, a rounded square.
+Path launcherMaskPath(List<double>? mask, double side) {
+  if (mask == null || mask.length < 6) {
+    return RoundedSuperellipseBorder(borderRadius: BorderRadius.circular(side * 0.32))
+        .getOuterPath(Rect.fromLTWH(0, 0, side, side));
+  }
+  final path = Path()..moveTo(mask[0] * side, mask[1] * side);
+  for (var i = 2; i + 1 < mask.length; i += 2) {
+    path.lineTo(mask[i] * side, mask[i + 1] * side);
+  }
+  return path..close();
+}
+
+class _Ring extends StatelessWidget {
+  const _Ring({required this.size});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Container(
+        width: AppIconPicker.extent(size),
+        height: AppIconPicker.extent(size),
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: Theme.of(context).colorScheme.primary, width: AppIconPicker.ring),
+        ),
+      ),
+    );
+  }
+}
+
+/// The tints of one launcher option, without the removed brand paths.
+class AppIconArt {
+  const AppIconArt._(this.from, this.to, this.glyph, [this.mono]);
+
+  final Color from;
+  final Color to;
+  final AppIconGlyph glyph;
+  final Color? mono;
+
+  static AppIconArt of(AppIcon icon) => switch (icon) {
+    AppIcon.mist => const AppIconArt._(Color(0xFF9AB0E8), Color(0xFF405AAD), AppIconGlyph.glassDark),
+    AppIcon.night => const AppIconArt._(Color(0xFF2C3D6C), Color(0xFF0C122D), AppIconGlyph.glassDark),
+    AppIcon.frost => const AppIconArt._(Color(0xFFFCFDFF), Color(0xFFDDE5F8), AppIconGlyph.glassLight),
+    AppIcon.ink => const AppIconArt._(Color(0xFF292B30), Color(0xFF0D0E11), AppIconGlyph.mono, Color(0xFFF5F7FB)),
+  };
+}
+
+enum AppIconGlyph { glassDark, glassLight, mono }
+
+/// One launcher tile: gradient background and the repository's own glyph.
+class AppIconPreview extends StatelessWidget {
+  const AppIconPreview(this.icon, {super.key, this.size = AppIconPicker.maxIcon, this.mask});
+
+  final AppIcon icon;
+  final double size;
+  final List<double>? mask;
+
+  @override
+  Widget build(BuildContext context) {
+    final art = AppIconArt.of(icon);
+    final radius = BorderRadius.circular(size * 0.28);
+    final light = art.glyph == AppIconGlyph.glassLight;
+    final glyph = switch (art.glyph) {
+      AppIconGlyph.mono => art.mono ?? Colors.white,
+      AppIconGlyph.glassDark => Colors.white,
+      AppIconGlyph.glassLight => const Color(0xFF1B2A4A),
+    };
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        borderRadius: radius,
+        gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [art.from, art.to]),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: light ? 0.10 : 0.24),
+            blurRadius: size * 0.12,
+            offset: Offset(0, size * 0.04),
+          ),
+        ],
+      ),
+      alignment: Alignment.center,
+      child: BrandMark(size: size * 0.56, color: glyph),
+    );
+  }
+}

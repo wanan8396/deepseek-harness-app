@@ -1,0 +1,266 @@
+// Materialize at app/lib/ui/common/feature_tile.dart.
+import 'dart:math' as math;
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../state/tile_style_state.dart';
+import '../theme/app_icons.dart';
+import '../theme/theme.dart';
+
+export '../../state/tile_style_state.dart' show TileStyle;
+
+// Type-only replacements for the declarations formerly supplied by generated art.
+enum FeatureKind { terminal, files, workspace, subagents, plugins, automation, models, phone, community }
+
+enum TileTone { wash, mid, ink, on }
+
+final class TileShape {
+  const TileShape(this.tone, this.path, {this.stroke = 0, this.fill = true});
+
+  final TileTone? tone;
+  final Path path;
+  final double stroke;
+  final bool fill;
+}
+
+final class TileLayer {
+  const TileLayer(this.shapes, {this.cuts = const []});
+
+  final List<TileShape> shapes;
+  final List<TileShape> cuts;
+}
+
+final class TileArt {
+  const TileArt(this.layers);
+
+  final List<TileLayer> layers;
+  static const grid = 96.0;
+}
+
+class FeatureTile extends ConsumerWidget {
+  const FeatureTile(this.kind, {super.key, this.size = 48, this.style, this.tint, this.semanticLabel});
+
+  final FeatureKind kind;
+  final double size;
+  final TileStyle? style;
+  final int? tint;
+  final String? semanticLabel;
+
+  static const card = 36.0;
+  static const empty = 64.0;
+  static const compact = 48.0;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // No stored tile style draws the app's default (glassy) tiles.
+    final selectedStyle = style ?? ref.watch(tileStyleProvider) ?? TileStyle.glassy;
+    final palette = TilePalette.of(context, tint: tint);
+    final background = switch (selectedStyle) {
+      TileStyle.duotone => palette.wash,
+      TileStyle.geometric => palette.ink,
+      TileStyle.glassy => palette.wash,
+    };
+    final foreground = selectedStyle == TileStyle.geometric ? palette.on : palette.ink;
+    final shape = switch (selectedStyle) {
+      TileStyle.duotone => RoundedSuperellipseBorder(borderRadius: BorderRadius.circular(size * 0.24)),
+      TileStyle.geometric => RoundedRectangleBorder(borderRadius: BorderRadius.circular(size * 0.16)),
+      TileStyle.glassy => CircleBorder(side: BorderSide(color: palette.mid.withValues(alpha: 0.45))),
+    };
+    final art = SizedBox.square(
+      dimension: size,
+      child: DecoratedBox(
+        decoration: ShapeDecoration(color: background, shape: shape),
+        child: Center(child: Icon(_icon(kind), size: size * 0.53, color: foreground)),
+      ),
+    );
+    final label = semanticLabel;
+    return label == null
+        ? ExcludeSemantics(child: art)
+        : Semantics(label: label, image: true, excludeSemantics: true, child: art);
+  }
+
+  static IconData _icon(FeatureKind kind) => switch (kind) {
+    FeatureKind.terminal => AppIcons.terminal,
+    FeatureKind.files => AppIcons.files,
+    FeatureKind.workspace => AppIcons.workspace,
+    FeatureKind.subagents => AppIcons.subagents,
+    FeatureKind.plugins => AppIcons.plugin,
+    FeatureKind.automation => AppIcons.automation,
+    FeatureKind.models => AppIcons.providers,
+    FeatureKind.phone => AppIcons.phoneControl,
+    FeatureKind.community => AppIcons.community,
+  };
+}
+
+@immutable
+class TilePalette {
+  const TilePalette({required this.wash, required this.mid, required this.ink, required this.on});
+
+  final Color wash;
+  final Color mid;
+  final Color ink;
+  final Color on;
+
+  static const washContrast = 1.5;
+  static const midContrast = 2.0;
+
+  factory TilePalette.accent(ColorScheme scheme) {
+    final dark = scheme.brightness == Brightness.dark;
+    final container = scheme.primaryContainer;
+    return _readable(
+      card(scheme),
+      ink: scheme.primary,
+      mid: dark ? Color.lerp(scheme.primary, scheme.inversePrimary, 0.55)! : scheme.inversePrimary,
+      wash: Color.lerp(scheme.inversePrimary, container, dark ? 0.4 : 0.5)!,
+      on: dark ? scheme.onPrimary : container,
+    );
+  }
+
+  factory TilePalette.identity(DshColors colors, int slot, ColorScheme scheme) {
+    final index = slot % colors.identity.length;
+    final container = colors.identity[index];
+    final strong = colors.onIdentity[index];
+    final dark = scheme.brightness == Brightness.dark;
+    return _readable(
+      card(scheme),
+      ink: Color.lerp(strong, container, dark ? 0.1 : 0.3)!,
+      mid: Color.lerp(strong, container, dark ? 0.45 : 0.58)!,
+      wash: Color.lerp(container, strong, dark ? 0.22 : 0.2)!,
+      on: container,
+    );
+  }
+
+  static Color card(ColorScheme scheme) =>
+      scheme.brightness == Brightness.dark ? scheme.surfaceContainerHighest : scheme.surfaceContainerLowest;
+
+  static double contrast(Color a, Color b) {
+    final aL = a.computeLuminance();
+    final bL = b.computeLuminance();
+    return (math.max(aL, bL) + 0.05) / (math.min(aL, bL) + 0.05);
+  }
+
+  static TilePalette of(BuildContext context, {int? tint}) {
+    final scheme = Theme.of(context).colorScheme;
+    return tint == null ? TilePalette.accent(scheme) : TilePalette.identity(DshColors.of(context), tint, scheme);
+  }
+
+  static TilePalette _readable(Color card, {required Color ink, required Color mid, required Color wash, required Color on}) {
+    Color resolve(Color candidate, double minimum) {
+      for (var step = 0; step < 25; step++) {
+        final mixed = Color.lerp(candidate, ink, step / 25)!;
+        if (contrast(mixed, card) >= minimum) return mixed;
+      }
+      return ink;
+    }
+    return TilePalette(wash: resolve(wash, washContrast), mid: resolve(mid, midContrast), ink: ink, on: on);
+  }
+
+  Color operator [](TileTone tone) => switch (tone) {
+    TileTone.wash => wash,
+    TileTone.mid => mid,
+    TileTone.ink => ink,
+    TileTone.on => on,
+  };
+
+  @override
+  bool operator ==(Object other) =>
+      other is TilePalette && other.wash == wash && other.mid == mid && other.ink == ink && other.on == on;
+
+  @override
+  int get hashCode => Object.hash(wash, mid, ink, on);
+}
+
+/// Paints caller-supplied paths. This library ships no feature artwork.
+class TilePainter extends CustomPainter {
+  const TilePainter(this.art, this.palette);
+
+  final TileArt art;
+  final TilePalette palette;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const grid = Rect.fromLTWH(0, 0, TileArt.grid, TileArt.grid);
+    canvas.save();
+    canvas.scale(size.width / TileArt.grid, size.height / TileArt.grid);
+    for (final layer in art.layers) {
+      if (layer.cuts.isNotEmpty) canvas.saveLayer(grid.inflate(8), Paint());
+      for (final shape in layer.shapes) {
+        if (shape.tone case final tone?) {
+          _draw(canvas, shape, Paint()..color = palette[tone]);
+        }
+      }
+      for (final shape in layer.cuts) {
+        _draw(canvas, shape, Paint()..blendMode = BlendMode.clear);
+      }
+      if (layer.cuts.isNotEmpty) canvas.restore();
+    }
+    canvas.restore();
+  }
+
+  static void _draw(Canvas canvas, TileShape shape, Paint paint) {
+    if (shape.fill) canvas.drawPath(shape.path, paint..style = PaintingStyle.fill);
+    if (shape.stroke > 0) {
+      canvas.drawPath(
+        shape.path,
+        paint
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = shape.stroke
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(TilePainter old) => old.art != art || old.palette != palette;
+}
+
+/// Compatibility helpers; the feature UI uses AppIcons instead of painted tiles.
+abstract final class GlassTint {
+  static const assetPixels = 208;
+
+  static String asset(FeatureKind kind) => 'assets/branding/whale.png';
+
+  static Color reference(Brightness brightness) => AppAccent.mist.seedFor(brightness);
+
+  static ColorFilter? filter(Color target, Brightness brightness) =>
+      target == reference(brightness) ? null : ColorFilter.mode(target, BlendMode.srcIn);
+
+  static (double, double) solve(Color target, Brightness brightness) {
+    final source = reference(brightness);
+    final degrees = (HSLColor.fromColor(target).hue - HSLColor.fromColor(source).hue + 540) % 360 - 180;
+    return (degrees, (chroma(target) / chroma(source)).clamp(0.3, 1.0));
+  }
+
+  static double chroma(Color color) => Oklch.fromColor(color).c;
+
+  static List<double> matrix(double degrees, double saturation) {
+    final radians = degrees * math.pi / 180;
+    final cosine = math.cos(radians);
+    final sine = math.sin(radians);
+    const weights = [0.213, 0.715, 0.072];
+    const phase = [
+      [-0.213, -0.715, 0.928],
+      [0.143, 0.140, -0.283],
+      [-0.787, 0.715, 0.072],
+    ];
+    return [
+      for (var row = 0; row < 3; row++) ...[
+        for (var col = 0; col < 3; col++)
+          weights[col] + saturation * (((row == col ? 1 : 0) - weights[col]) * cosine + phase[row][col] * sine),
+        0,
+        0,
+      ],
+      0, 0, 0, 1, 0,
+    ];
+  }
+
+  static Color apply(List<double> matrix, Color color) {
+    double channel(int row) {
+      final i = row * 5;
+      return (matrix[i] * color.r + matrix[i + 1] * color.g + matrix[i + 2] * color.b).clamp(0.0, 1.0);
+    }
+    return Color.from(alpha: color.a, red: channel(0), green: channel(1), blue: channel(2));
+  }
+}

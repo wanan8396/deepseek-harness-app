@@ -1,0 +1,166 @@
+// Materialize at app/lib/ui/shell/brand_mark.dart.
+import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+
+import '../../state/app_info.dart';
+import '../theme/app_icons.dart';
+import '../theme/theme.dart';
+
+class BrandMark extends StatelessWidget {
+  const BrandMark({super.key, this.size = 28, this.color, this.tile = false});
+
+  final double size;
+  final Color? color;
+  final bool tile;
+
+  // Measured from the target whale PNGs, including their transparent pixels.
+  static const aspect = 208 / 163;
+  static final visualCentre = const Offset(0.4737, 0.4698);
+
+  static Offset opticalShift(double size) =>
+      Offset((0.5 - visualCentre.dx) * size * aspect, (0.5 - visualCentre.dy) * size);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final dark = theme.brightness == Brightness.dark;
+    final tint = tile ? scheme.onPrimaryContainer : color;
+    final height = tile ? size * 0.66 : size;
+    final mark = Image.asset(
+      dark ? 'assets/branding/whale-dark.png' : 'assets/branding/whale.png',
+      width: height * aspect,
+      height: height,
+      fit: BoxFit.contain,
+      color: tint,
+      colorBlendMode: tint == null ? null : BlendMode.srcIn,
+      filterQuality: FilterQuality.medium,
+      excludeFromSemantics: true,
+      errorBuilder: (context, error, stack) => SizedBox(
+        width: height * aspect,
+        height: height,
+        child: Icon(AppIcons.image, size: height, color: tint ?? scheme.onSurface),
+      ),
+    );
+    return Semantics(
+      label: AppInfo.name,
+      image: true,
+      excludeSemantics: true,
+      child: tile
+          ? Container(
+              width: size,
+              height: size,
+              decoration: ShapeDecoration(
+                color: scheme.primaryContainer,
+                shape: RoundedSuperellipseBorder(borderRadius: BorderRadius.circular(size * 0.26)),
+              ),
+              child: Center(child: mark),
+            )
+          : mark,
+    );
+  }
+}
+
+class BrandLockup extends StatelessWidget {
+  const BrandLockup({
+    super.key,
+    this.height = 20,
+    this.fontSize,
+    this.label = _defaultLabel,
+    this.color,
+    this.glyphColor,
+  });
+
+  static const _defaultLabel = 'DSH';
+
+  final double height;
+  final double? fontSize;
+  final String label;
+  final Color? color;
+  final Color? glyphColor;
+
+  static const glyphScale = 1.25;
+  static const gapScale = 0.36;
+  static const xHeight = 0.528;
+  static const capHeight = 0.711;
+
+  static double centreRise(String label, double size) =>
+      (label.contains(RegExp('[a-z]')) ? xHeight : capHeight) * size / 2;
+
+  static double wordInset(double size) => size * glyphScale * BrandMark.aspect + size * gapScale;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final size = fontSize ?? height * 0.95;
+    final drawn = MediaQuery.textScalerOf(context).scale(size);
+    final glyph = drawn * glyphScale;
+    final standard = label == _defaultLabel;
+    final wordHeight = drawn * capHeight;
+    final child = Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.baseline,
+      textBaseline: TextBaseline.alphabetic,
+      children: [
+        _LockupBaseline(
+          baseline: glyph * BrandMark.visualCentre.dy + centreRise(label, drawn),
+          child: ExcludeSemantics(child: BrandMark(size: glyph, color: glyphColor)),
+        ),
+        SizedBox(width: drawn * gapScale),
+        if (standard)
+          _LockupBaseline(
+            baseline: wordHeight,
+            child: Image.asset(
+              theme.brightness == Brightness.dark ? 'assets/branding/wordmark-dark.png' : 'assets/branding/wordmark.png',
+              width: wordHeight * (184 / 19),
+              height: wordHeight,
+              fit: BoxFit.contain,
+              color: color,
+              colorBlendMode: color == null ? null : BlendMode.srcIn,
+              filterQuality: FilterQuality.medium,
+              excludeFromSemantics: true,
+              errorBuilder: (context, error, stack) => Text(
+                label,
+                style: AppType.wordmark(size: size, color: color ?? theme.colorScheme.onSurface),
+              ),
+            ),
+          )
+        else
+          Text(label, style: AppType.wordmark(size: size, color: color ?? theme.colorScheme.onSurface)),
+      ],
+    );
+    return standard ? Semantics(label: AppInfo.name, image: true, excludeSemantics: true, child: child) : child;
+  }
+}
+
+class _LockupBaseline extends SingleChildRenderObjectWidget {
+  const _LockupBaseline({required this.baseline, required super.child});
+
+  final double baseline;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) => _RenderLockupBaseline(baseline);
+
+  @override
+  void updateRenderObject(BuildContext context, _RenderLockupBaseline renderObject) {
+    renderObject.baseline = baseline;
+  }
+}
+
+class _RenderLockupBaseline extends RenderProxyBox {
+  _RenderLockupBaseline(this._baseline);
+
+  double _baseline;
+
+  set baseline(double value) {
+    if (_baseline == value) return;
+    _baseline = value;
+    markNeedsLayout();
+  }
+
+  @override
+  double? computeDistanceToActualBaseline(TextBaseline baseline) => _baseline;
+
+  @override
+  double? computeDryBaseline(BoxConstraints constraints, TextBaseline baseline) => _baseline;
+}

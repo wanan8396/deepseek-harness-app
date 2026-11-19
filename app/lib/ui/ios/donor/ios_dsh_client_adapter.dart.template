@@ -27,6 +27,16 @@ final class IosDshClientAdapter extends DshCarrier {
   @override
   bool get supportsUplink => false;
 
+  // Only advertised capabilities here; native admission remains authoritative.
+  @override
+  bool allowsEndpoint(String endpoint) => const {
+    'session/list', 'session/search', 'session/modelCatalog', 'session/projections',
+    'session/events', 'session/page', 'session/canOpenWorkspacePath', 'workspace/initializeDefault',
+    'session/create', 'session/selectModel', 'session/rename', 'session/prompt',
+    'session/updateQueue', 'session/cancel', r'$events/result',
+    r'$events', 'remoteAccess/follow', 'workspace/follow', 'session/control', 'session/follow',
+  }.contains(endpoint);
+
   @override
   Future<RpcResult> call(String endpoint, Map<String, Object?> args, {Duration? timeout}) async {
     _checkOpen();

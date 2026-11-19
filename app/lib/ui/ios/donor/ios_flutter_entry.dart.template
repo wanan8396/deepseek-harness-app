@@ -1,0 +1,257 @@
+import 'dart:async';
+
+import 'package:dsh_client/dsh_client.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../app.dart';
+import '../../l10n/l10n.dart';
+import '../../launch/launch_state.dart';
+import '../../runtime/runtime_bridge.dart';
+import '../../runtime/runtime_state.dart';
+import '../../state/connection_state.dart';
+import '../../state/host_ref.dart';
+import '../../state/read_list_identity.dart';
+import '../../state/selection_state.dart';
+import '../shell/home_shell.dart';
+import 'ios_dsh_client_adapter.dart';
+import 'ios_local_engine_page.dart';
+import 'ios_official_carrier.dart';
+
+/// Native-only bootstrap. The real HomeShell, ChatScreen and SessionsDrawer
+/// take the same DshClient as Android, with the app-owned carrier instead of
+/// its HTTP/WebSocket connector. The model key never enters a provider/cache.
+class IosFlutterEntry extends StatefulWidget {
+  const IosFlutterEntry({super.key});
+
+  @override
+  State<IosFlutterEntry> createState() => _IosFlutterEntryState();
+}
+
+class _EmbeddedActiveHost extends ActiveHostController {
+  @override
+  HostRef build() => HostRef.local;
+
+  @override
+  Future<void> get ready => Future.value();
+
+  @override
+  void select(HostRef host) {}
+
+  @override
+  Future<void> forget(bool Function(HostRef) gone) async {}
+}
+
+class _EmbeddedLocalConnection extends LocalConnectionController {
+  _EmbeddedLocalConnection(this.connection);
+  final HostConnection connection;
+
+  @override
+  Future<HostConnection?> build() async => connection;
+}
+
+class _EmbeddedRuntimeState extends LocalRuntimeController {
+  @override
+  LocalRuntimeState build() => const LocalRuntimeState(
+    loaded: true,
+    status: RuntimeStatus(phase: RuntimePhase.running),
+  );
+}
+
+class _IosFlutterEntryState extends State<IosFlutterEntry> {
+  final _key = TextEditingController();
+  final _base = TextEditingController();
+  final _model = TextEditingController(text: 'deepseek-v4-flash');
+  final _form = GlobalKey<FormState>();
+  HostConnection? _connection;
+  ProviderContainer? _hostScope;
+  String? _error;
+  bool _custom = false;
+  bool _working = false;
+
+  String _text(String cn, String en) =>
+      AppLocale.isEnglish ? en : cn;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) LaunchController.active.value?.ready(waitsForEngine: false);
+    });
+  }
+
+  @override
+  void dispose() {
+    _hostScope?.dispose();
+    _key.dispose();
+    _base.dispose();
+    _model.dispose();
+    final client = _connection?.client;
+    if (client != null) unawaited(_close(client));
+    super.dispose();
+  }
+
+  static Future<bool> _close(DshClient client) async {
+    try {
+      await client.close();
+      return true;
+    } on Object {
+      // No key, URL, response body or filesystem path in Flutter errors.
+      return false;
+    }
+  }
+
+  String? _nonempty(String? value) => value?.trim().isNotEmpty == true
+      ? null
+      : _text('请输入此项', 'This field is required');
+
+  String? _https(String? value) {
+    final url = Uri.tryParse(value?.trim() ?? '');
+    if (url != null && url.scheme == 'https' && url.host.isNotEmpty && url.userInfo.isEmpty && !url.hasQuery && !url.hasFragment) {
+      return null;
+    }
+    return _text('请输入 HTTPS 服务地址', 'Enter an HTTPS base URL');
+  }
+
+  Future<void> _connect() async {
+    if (_working || !_form.currentState!.validate()) return;
+    setState(() {
+      _working = true;
+      _error = null;
+    });
+    FocusScope.of(context).unfocus();
+    DshClient? pending;
+    try {
+      final carrier = await IosOfficialCarrier.start(
+        apiKey: _key.text.trim(),
+        protocol: _custom ? 'openai-chat' : 'deepseek',
+        baseUrl: _custom ? _base.text.trim() : 'https://api.deepseek.com/anthropic',
+        modelId: _model.text.trim(),
+      );
+      final client = pending = DshClient.withCarrier(IosDshClientAdapter(carrier));
+      await client.mux.ready(timeout: const Duration(seconds: 15));
+      if (!mounted) return;
+      _key.clear();
+      final connection = HostConnection(client: client, isLocal: true, workingDirectory: '/workspace');
+      final scope = ProviderContainer(overrides: [
+        activeConnectionProvider.overrideWithValue(AsyncData(connection)),
+        localConnectionProvider.overrideWith(() => _EmbeddedLocalConnection(connection)),
+        localRuntimeProvider.overrideWith(_EmbeddedRuntimeState.new),
+        activeHostProvider.overrideWith(_EmbeddedActiveHost.new),
+        readListIdentityProvider.overrideWithValue(ReadListIdentity('ios-${carrier.generation}')),
+      ]);
+      setState(() {
+        _connection = connection;
+        _hostScope = scope;
+      });
+      pending = null;
+    } on Object {
+      if (mounted) {
+        setState(() => _error = _text('引擎连接失败，请检查服务设置后重试。', 'Could not start the engine. Check the endpoint and try again.'));
+      }
+    } finally {
+      final client = pending;
+      if (client != null) await _close(client);
+      if (mounted) setState(() => _working = false);
+    }
+  }
+
+  Future<void> _disconnect() async {
+    final client = _connection?.client;
+    if (_working || client == null) return;
+    setState(() => _working = true);
+    final closed = await _close(client);
+    if (!mounted) return;
+    final oldScope = _hostScope;
+    setState(() {
+      _working = false;
+      if (closed) {
+        _connection = null;
+        _hostScope = null;
+      } else {
+        _error = _text('引擎仍在关闭，请重试。', 'The engine is still stopping; try again.');
+      }
+    });
+    if (closed && oldScope != null) {
+      // Let the old Navigator, widgets and their subscriptions unmount first.
+      WidgetsBinding.instance.addPostFrameCallback((_) => oldScope.dispose());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scope = _hostScope;
+    if (scope != null) {
+      // Do not inherit a parent Riverpod container: Android's unscoped
+      // provider graph must be wholly owned by this Host generation, including
+      // routes the chat opens above its own page (model picker and search).
+      return UncontrolledProviderScope(
+        key: ObjectKey(scope),
+        container: scope,
+        child: DshApp(home: HomeShell(onDisconnect: _disconnect, onOpenEngine: _disconnect)),
+      );
+    }
+    return ProviderScope(child: DshApp(home: _setup()));
+  }
+
+  Widget _setup() => Scaffold(
+      key: const ValueKey('ios-flutter-setup'),
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 560),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Form(
+                key: _form,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text('DeepSeek Harness', style: Theme.of(context).textTheme.headlineMedium),
+                    const SizedBox(height: 12),
+                    Text(_text('官方引擎在设备内运行；模型请求通过 HTTPS 发送。', 'The official engine runs on this device; model requests use HTTPS.')),
+                    const SizedBox(height: 16),
+                    SwitchListTile.adaptive(
+                      title: Text(_text('自定义 OpenAI 兼容服务', 'Custom OpenAI-compatible service')),
+                      contentPadding: EdgeInsets.zero,
+                      value: _custom,
+                      onChanged: _working ? null : (value) => setState(() => _custom = value),
+                    ),
+                    if (_custom) TextFormField(
+                      key: const ValueKey('ios-flutter-base-url'), controller: _base,
+                      decoration: InputDecoration(labelText: _text('HTTPS 服务地址', 'HTTPS base URL')),
+                      keyboardType: TextInputType.url, autocorrect: false, validator: _https, enabled: !_working,
+                    ),
+                    TextFormField(
+                      key: const ValueKey('ios-flutter-api-key'), controller: _key,
+                      decoration: const InputDecoration(labelText: 'API Key'),
+                      obscureText: true, enableSuggestions: false, autocorrect: false, enabled: !_working,
+                      validator: _nonempty,
+                    ),
+                    TextFormField(
+                      key: const ValueKey('ios-flutter-model'), controller: _model,
+                      decoration: InputDecoration(labelText: _text('模型 ID', 'Model ID'), hintText: _custom ? null : 'deepseek-v4-flash'),
+                      enableSuggestions: false, autocorrect: false, enabled: !_working, validator: _nonempty,
+                    ),
+                    const SizedBox(height: 16),
+                    if (_error case final message?) Text(message, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                    FilledButton(
+                      key: const ValueKey('ios-flutter-connect'),
+                      onPressed: _working ? null : _connect,
+                      child: Text(_working ? _text('正在启动…', 'Starting…') : _text('启动本机引擎', 'Start local engine')),
+                    ),
+                    Builder(builder: (page) => TextButton(
+                      onPressed: _working ? null : () => Navigator.of(page).push<void>(
+                        MaterialPageRoute<void>(builder: (_) => const IosLocalEnginePage()),
+                      ),
+                      child: Text(_text('运行时诊断与网页备用界面', 'Runtime diagnostics and web fallback')),
+                    )), 
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+}

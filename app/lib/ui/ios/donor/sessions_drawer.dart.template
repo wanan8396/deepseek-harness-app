@@ -1,0 +1,852 @@
+// Structure derived from PiPilot (https://github.com/CikeSeven/pi_pilot), MIT, Copyright (c) 2026 CikeSeven. See THIRD_PARTY_NOTICES.md.
+// iOS replacement for app/lib/ui/shell/sessions_drawer.dart at aa3578557b1500ecf4ec62f9ad86223e6e3f1bf5.
+
+import 'dart:async';
+
+import 'package:dsh_client/dsh_client.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/scheduler.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../l10n/l10n.dart';
+import '../../state/drawer_view_state.dart';
+import '../../state/read_list_identity.dart';
+import '../../state/session_attention_state.dart';
+import '../../state/sessions_state.dart';
+import '../chat/media/media_format.dart' show chatTitleShown;
+import '../common/app_dialog.dart';
+import '../common/app_sheet.dart';
+import '../common/empty_view.dart';
+import '../common/list_page_row.dart';
+import '../common/pressable.dart';
+import '../common/read_list_status.dart';
+import '../common/segmented_pill.dart';
+import '../common/sheet_title_bar.dart';
+import '../common/smooth_size.dart';
+import '../common/status_dot.dart';
+import '../theme/app_icons.dart';
+import '../theme/theme.dart';
+import 'adaptive/adaptive_layout.dart' show WindowClass;
+import 'brand_mark.dart';
+import 'drawer/drawer_actions.dart' show createFolderFlow, editFolderFlow, moveToFolderFlow;
+import 'drawer/drawer_destination.dart';
+import 'drawer/drawer_filter_bar.dart';
+import 'drawer/drawer_list.dart';
+import 'drawer/folder_sheets.dart' show showManageFolders;
+import 'drawer/selection_bars.dart' show DrawerSelectionHeader;
+import 'session_search_page.dart';
+
+export '../../state/drawer_view_state.dart' show SessionDay, sessionDayOf;
+export 'drawer/drawer_destination.dart';
+export 'drawer/session_tile.dart' show SessionTile;
+
+/// Display title for a session: DSH's generated title (a generation
+/// request's header left out), else a neutral fallback.
+String sessionTitle(SessionSummary s) {
+  final t = s.title?.trim();
+  return t == null || t.isEmpty ? appL10n.commonUntitledChat : chatTitleShown(t);
+}
+
+/// The soft fill behind the current conversation (drawer and search).
+Color sessionSelectionColor(BuildContext context) {
+  final scheme = Theme.of(context).colorScheme;
+  return scheme.primary.withValues(alpha: scheme.brightness == Brightness.dark ? 0.18 : 0.09);
+}
+
+/// The donor drawer for the App's single owned iOS Host. The parent owns
+/// start/stop and the adaptive sidebar/phone swipe lifecycle.
+class SessionsDrawer extends ConsumerWidget {
+  const SessionsDrawer({
+    super.key,
+    required this.onClose,
+    required this.onOpen,
+    this.now,
+    this.identityBarHeight,
+    this.drawerMotion,
+    this.showEngineEntry = false,
+    this.onDisconnect,
+  });
+
+  final VoidCallback onClose;
+  final ValueChanged<DrawerDestination> onOpen;
+  final bool showEngineEntry;
+  final VoidCallback? onDisconnect;
+
+  /// Clock override for grouping (tests).
+  final DateTime? now;
+
+  /// Told the height of the identity bar (and of the action bar over it in
+  /// multi-select) once it is laid out: the pulled-over drawer's notices
+  /// stand above it.
+  final ValueNotifier<double>? identityBarHeight;
+
+  /// The pulled-over drawer's 0 → 1 animation (null for the persistent
+  /// sidebar). While it moves, the panel drops its backdrop blur: a moving
+  /// glass surface re-samples the whole chat behind it every frame, which is
+  /// the expensive part on mid-range GPUs.
+  final Animation<double>? drawerMotion;
+
+  /// Where the content sits in from either edge: the search bar, the rows'
+  /// highlights and the identity bar's keys.
+  static const contentEdge = 10.0;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final live = ref.watch(readListLiveConnectionProvider)?.isLocal == true;
+    final selecting = live &&
+        ref.watch(drawerSelectionProvider.select((s) => s != null)) &&
+        ref.watch(drawerScopeProvider)?.readOnly == false;
+
+    void newChat() {
+      if (ref.read(readListLiveConnectionProvider)?.isLocal != true) return;
+      ref.read(currentSessionProvider.notifier).select(null);
+      onClose();
+    }
+
+    // The drawer stays mounted with the shell: it keeps the unread record
+    // following what the person opens and leaves.
+    ref.listen(drawerSeenProvider, (_, _) {});
+    // Folders forget conversations the host no longer has.
+    ref.listen(sessionsProvider, (_, next) {
+      if (!next.hasValue || next.isLoading) return;
+      final known = {for (final s in ref.read(sessionsProvider.notifier).allSessions) s.sessionId};
+      if (known.isNotEmpty) unawaited(ref.read(drawerViewProvider.notifier).forgetMissing(known));
+    });
+    final quick = AppMotion.of(context, AppMotion.quick);
+    // A phone on its side: the top of the drawer (brand, search, filters)
+    // would leave room for two conversations, so it scrolls away with them.
+    final short = MediaQuery.sizeOf(context).height < WindowClass.compactHeight;
+    final top = <Widget>[
+      AnimatedSwitcher(
+        duration: quick,
+        child: selecting
+            ? DrawerSelectionHeader(key: const ValueKey('selecting'), now: now)
+            : Padding(
+                key: const ValueKey('brand'),
+                // The lockup lines up with the rows' text (20); the
+                // button's edge with the search bar's and the rows'
+                // edges (10).
+                padding: const EdgeInsets.fromLTRB(20, 14, 10, 10),
+                child: Row(
+                  children: [
+                    // On a narrow drawer with large text the lockup gives
+                    // way a little rather than the keys.
+                    const Expanded(
+                      child: Align(
+                        alignment: AlignmentDirectional.centerStart,
+                        child: FittedBox(fit: BoxFit.scaleDown, child: BrandLockup(height: 19)),
+                      ),
+                    ),
+                    // 网页模式, quietly: the one solid element stays 新对话.
+                    if (live) NewChatButton(onTap: newChat),
+                  ],
+                ),
+              ),
+      ),
+      if (live) SessionSearchBar(onClose: onClose),
+      SmoothSize(
+        duration: AppMotion.of(context, AppMotion.standard),
+        curve: AppMotion.std,
+        alignment: Alignment.topCenter,
+        child: const Row(
+          children: [
+            Expanded(child: DrawerFilterBar()),
+            _ViewOptionsKey(),
+          ],
+        ),
+      ),
+    ];
+    final list = _EdgeFade(
+      child: _SessionList(onClose: onClose, now: now),
+    );
+
+    const radius = BorderRadius.only(topRight: Radius.circular(AppShape.xl), bottomRight: Radius.circular(AppShape.xl));
+    final content = Material(
+      type: MaterialType.transparency,
+      child: SafeArea(
+        right: false,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (short)
+              Expanded(
+                child: NestedScrollView(
+                  headerSliverBuilder: (context, _) => [
+                    SliverToBoxAdapter(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: top),
+                    ),
+                  ],
+                  body: list,
+                ),
+              )
+            else ...[
+              ...top,
+              Expanded(child: list),
+            ],
+            // The action bar lies exactly over the identity bar, which
+            // keeps its size while hidden: same height at any text size.
+            _ReportHeight(
+              height: identityBarHeight,
+              child: Stack(
+                children: [
+                  AnimatedOpacity(
+                    opacity: selecting ? 0 : 1,
+                    duration: quick,
+                    child: IgnorePointer(
+                      ignoring: selecting,
+                      child: ExcludeSemantics(
+                        excluding: selecting,
+                        child: _IdentityBar(
+                          live: live,
+                          onDetails: live && showEngineEntry ? () => onOpen(DrawerDestination.engine) : null,
+                          onDisconnect: onDisconnect,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned.fill(
+                    child: AnimatedSwitcher(
+                      duration: quick,
+                      child: selecting
+                          ? const _MoveSelectionBar(key: ValueKey('selecting'))
+                          : const SizedBox.shrink(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    final motion = drawerMotion;
+    if (motion == null) {
+      return GlassSurface(tier: GlassTier.sheet, borderRadius: radius, child: content);
+    }
+    return SlidingGlass(motion: motion, tier: GlassTier.sheet, borderRadius: radius, child: content);
+  }
+}
+
+/// Tells [height] the child's height after each layout that changes it (on
+/// the next frame: nothing above is rebuilt while laying out).
+class _ReportHeight extends SingleChildRenderObjectWidget {
+  const _ReportHeight({required this.height, required super.child});
+
+  final ValueNotifier<double>? height;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) => _RenderReportHeight(height);
+
+  @override
+  void updateRenderObject(BuildContext context, _RenderReportHeight renderObject) => renderObject.height = height;
+}
+
+class _RenderReportHeight extends RenderProxyBox {
+  _RenderReportHeight(this.height);
+
+  ValueNotifier<double>? height;
+
+  @override
+  void performLayout() {
+    super.performLayout();
+    final target = height;
+    final value = size.height;
+    if (target == null || target.value == value) return;
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (attached && identical(height, target)) target.value = value;
+    });
+  }
+}
+
+/// "新对话": the drawer's one solid primary element, a 36dp pill.
+class NewChatButton extends StatelessWidget {
+  const NewChatButton({super.key, required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Semantics(
+      button: true,
+      label: l10n.commonNewChat,
+      onTap: onTap,
+      excludeSemantics: true,
+      child: Pressable(
+        child: Material(
+          color: scheme.primary,
+          shape: const StadiumBorder(),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 36),
+              child: Padding(
+                // The glyph carries ~3dp of its own air on the left: 12 + 3
+                // reads as the 15 on the right.
+                padding: const EdgeInsets.fromLTRB(12, 0, 15, 0),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(AppIcons.newChat, size: 20, color: scheme.onPrimary),
+                    const SizedBox(width: 4),
+                    Text(l10n.commonNewChat, style: theme.textTheme.labelLarge?.copyWith(color: scheme.onPrimary)),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The donor list options, limited to sorting and private drawer folders.
+class _ViewOptionsKey extends ConsumerWidget {
+  const _ViewOptionsKey();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scope = ref.watch(drawerScopeProvider);
+    final filtered = ref.watch(drawerFilterProvider) != DrawerFilter.all;
+    final hasFolders = ref.watch(drawerViewProvider.select((v) => v.folders.isNotEmpty));
+    if (ref.watch(readListLiveConnectionProvider)?.isLocal != true ||
+        scope == null || scope.readOnly || (scope.sessions.isEmpty && !filtered && !hasFolders)) {
+      return const SizedBox.shrink();
+    }
+    return Padding(
+      padding: const EdgeInsets.only(right: 10),
+      child: DrawerViewButton(onTap: () => _open(context, ref)),
+    );
+  }
+
+  Future<void> _open(BuildContext context, WidgetRef ref) async {
+    final connection = ref.read(readListLiveConnectionProvider);
+    final generation = connection?.client.mux.generation;
+    final action = await showAppSheet<_ViewAction>(context, builder: (_) => const _ViewOptionsSheet());
+    if (!context.mounted || action == null || connection == null ||
+        !identical(ref.read(readListLiveConnectionProvider), connection) ||
+        connection.client.mux.generation != generation || ref.read(drawerScopeProvider)?.readOnly != false) {
+      return;
+    }
+    switch (action) {
+      case _ViewAction.newFolder:
+        await createFolderFlow(context, ref);
+      case _ViewAction.manageFolders:
+        await showManageFolders(context, onEdit: (folder) => editFolderFlow(context, ref, folder));
+      case _ViewAction.select:
+        ref.read(drawerSelectionProvider.notifier).start();
+    }
+  }
+}
+
+enum _ViewAction { newFolder, manageFolders, select }
+
+class _ViewOptionsSheet extends ConsumerWidget {
+  const _ViewOptionsSheet();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
+    final sort = ref.watch(drawerViewProvider.select((v) => v.sort));
+    final hasFolders = ref.watch(drawerViewProvider.select((v) => v.folders.isNotEmpty));
+    const margin = EdgeInsets.fromLTRB(SheetTitleBar.inset, 0, SheetTitleBar.inset, 12);
+    return SafeArea(
+      top: false,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SheetTitleBar(l10n.shellChatList),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(SheetTitleBar.inset + 8, 0, SheetTitleBar.inset, 8),
+            child: Semantics(header: true, child: Text(l10n.shellSort, style: groupTitleStyle(context))),
+          ),
+          Padding(
+            padding: margin.copyWith(bottom: 16),
+            child: SegmentedPill<DrawerSort>(
+              segments: [
+                PillSegment(DrawerSort.activity, l10n.shellRecentActivity),
+                PillSegment(DrawerSort.created, l10n.shellCreatedTime),
+              ],
+              selected: sort,
+              onChanged: (value) => ref.read(drawerViewProvider.notifier).setSort(value),
+            ),
+          ),
+          SheetGroup(
+            margin: margin,
+            children: [
+              ListPageRow(
+                icon: AppIcons.newFolder,
+                title: l10n.shellNewFolder,
+                chevron: false,
+                onTap: () => Navigator.of(context).pop(_ViewAction.newFolder),
+              ),
+              if (hasFolders)
+                ListPageRow(
+                  icon: AppIcons.manageFolders,
+                  title: l10n.shellManageFolders,
+                  onTap: () => Navigator.of(context).pop(_ViewAction.manageFolders),
+                ),
+              ListPageRow(
+                icon: AppIcons.multiSelect,
+                title: l10n.shellMultiSelect,
+                chevron: false,
+                onTap: () => Navigator.of(context).pop(_ViewAction.select),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+        ],
+      ),
+    );
+  }
+}
+
+/// Soft top and bottom edges on the list, so rows fade into the header and
+/// the identity bar instead of being cut. At rest nothing is under either fade
+/// (the list's own padding is deeper).
+class _EdgeFade extends StatelessWidget {
+  const _EdgeFade({required this.child});
+
+  final Widget child;
+
+  static const _top = 10.0;
+  static const _bottom = 16.0;
+
+  @override
+  Widget build(BuildContext context) {
+    return ShaderMask(
+      blendMode: BlendMode.dstIn,
+      shaderCallback: (rect) {
+        final h = rect.height <= 0 ? 1.0 : rect.height;
+        return LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: const [Color(0x00000000), Color(0xFF000000), Color(0xFF000000), Color(0x00000000)],
+          stops: [0, (_top / h).clamp(0.0, 0.5), (1 - _bottom / h).clamp(0.5, 1.0), 1],
+        ).createShader(rect);
+      },
+      child: child,
+    );
+  }
+}
+
+class _SessionList extends ConsumerWidget {
+  const _SessionList({required this.onClose, this.now});
+
+  final VoidCallback onClose;
+  final DateTime? now;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
+    final sessions = ref.watch(sessionsProvider);
+    final connection = ref.watch(readListLiveConnectionProvider);
+    final identity = ref.watch(readListIdentityProvider);
+    final scope = ref.watch(drawerScopeProvider);
+    final live = connection?.isLocal == true;
+    if (scope == null) {
+      if (!live) return const _EmptyState(live: false);
+      if (sessions.hasError) {
+        return _Centered(
+          child: EmptyView(
+            compact: true,
+            icon: AppIcons.offline,
+            title: l10n.shellChatsLoadFailed,
+            actionLabel: l10n.commonRetry,
+            onAction: () => ref.read(sessionsProvider.notifier).refresh(),
+          ),
+        );
+      }
+      return const _SkeletonList();
+    }
+    if (scope.sessions.isEmpty && ref.watch(drawerViewProvider).folders.isEmpty) {
+      if (scope.readOnly) return _Centered(child: Text(readListStatusText(scope.status)));
+      return _EmptyState(live: live);
+    }
+
+    bool currentHost() => live &&
+        identical(ref.read(readListLiveConnectionProvider), connection) &&
+        ref.read(readListIdentityProvider) == identity;
+
+    return DrawerConversationList(
+      now: now,
+      onNewChat: onClose,
+      readOnly: scope.readOnly || !live,
+      onOpen: (id) {
+        if (!currentHost() || ref.read(drawerScopeProvider)?.sessions.any((s) => s.sessionId == id) != true) return;
+        ref.read(currentSessionProvider.notifier).select(id);
+        onClose();
+      },
+      onLongPress: (session) {
+        final current = ref.read(drawerScopeProvider);
+        if (currentHost() && current?.readOnly == false && current!.sessions.any((row) => identical(row, session))) {
+          unawaited(_showActions(context, ref, session));
+        }
+      },
+    );
+  }
+
+  Future<void> _showActions(BuildContext context, WidgetRef ref, SessionSummary s) async {
+    final owner = ref.read(readListLiveConnectionProvider);
+    if (owner == null || !owner.isLocal) return;
+    final identity = ref.read(readListIdentityProvider);
+    final generation = owner.client.mux.generation;
+    bool owned() {
+      if (!context.mounted || !identical(ref.read(readListLiveConnectionProvider), owner) ||
+          owner.client.mux.generation != generation || ref.read(readListIdentityProvider) != identity) {
+        return false;
+      }
+      final scope = ref.read(drawerScopeProvider);
+      return scope?.readOnly == false && scope!.sessions.any((row) => row.sessionId == s.sessionId);
+    }
+
+    final title = sessionTitle(s);
+    final inFolder = ref.read(drawerViewProvider).folderOf.containsKey(s.sessionId);
+    final action = await showAppSheet<_SessionAction>(
+      context,
+      isScrollControlled: true,
+      builder: (sheet) => SafeArea(
+        top: false,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(sheet).height * 0.8),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SheetHeader(title),
+                SheetGroup(
+                  children: [
+                    ListTile(
+                      leading: const Icon(AppIcons.rename),
+                      title: Text(context.l10n.commonRename),
+                      onTap: () => Navigator.pop(sheet, _SessionAction.rename),
+                    ),
+                    ListTile(
+                      leading: const Icon(AppIcons.moveToFolder),
+                      title: Text(inFolder ? context.l10n.shellMoveToOtherFolder : context.l10n.shellMoveToFolder),
+                      onTap: () => Navigator.pop(sheet, _SessionAction.folder),
+                    ),
+                    ListTile(
+                      leading: const Icon(AppIcons.multiSelect),
+                      title: Text(context.l10n.shellMultiSelect),
+                      onTap: () => Navigator.pop(sheet, _SessionAction.select),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    if (action == null || !owned()) return;
+    switch (action) {
+      case _SessionAction.folder:
+        await moveToFolderFlow(context, ref, [s.sessionId]);
+      case _SessionAction.select:
+        ref.read(drawerSelectionProvider.notifier).start(s.sessionId);
+      case _SessionAction.rename:
+        final next = await _askTitle(context, s.title?.trim() ?? '');
+        if (!owned() || next == null || next.isEmpty || next == s.title) return;
+        try {
+          await ref.read(sessionsProvider.notifier).rename(s.sessionId, next);
+        } catch (_) {
+          if (context.mounted) {
+            ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text(context.l10n.shellRenameFailed)));
+          }
+        }
+    }
+  }
+
+  Future<String?> _askTitle(BuildContext context, String initial) {
+    final controller = TextEditingController(text: initial);
+    return showAppDialog<String>(
+      context: context,
+      builder: (dialog) => AlertDialog(
+        title: Text(context.l10n.shellRenameChat),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: 80,
+          decoration: InputDecoration(hintText: context.l10n.shellChatTitle, counterText: ''),
+          onSubmitted: (v) => Navigator.pop(dialog, v.trim()),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialog), child: Text(context.l10n.commonCancel)),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialog, controller.text.trim()),
+            child: Text(context.l10n.commonSave),
+          ),
+        ],
+      ),
+    ).whenComplete(controller.dispose);
+  }
+}
+
+enum _SessionAction { rename, folder, select }
+
+/// Loading: a few quiet placeholder rows on the same grid as the real ones,
+/// breathing slowly (still under reduced motion).
+class _SkeletonList extends StatefulWidget {
+  const _SkeletonList();
+
+  @override
+  State<_SkeletonList> createState() => _SkeletonListState();
+}
+
+class _SkeletonListState extends State<_SkeletonList> with SingleTickerProviderStateMixin {
+  late final AnimationController _breath = AnimationController(vsync: this, duration: AppMotion.breath);
+  late final Animation<double> _opacity = _breath.drive(
+    Tween(begin: 0.55, end: 1.0).chain(CurveTween(curve: AppMotion.std)),
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (AppMotion.reduced(context)) {
+      _breath
+        ..stop()
+        ..value = 1;
+    } else if (!_breath.isAnimating) {
+      _breath.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _breath.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final scheme = Theme.of(context).colorScheme;
+    final fill = scheme.onSurface.withValues(alpha: scheme.brightness == Brightness.dark ? 0.09 : 0.07);
+    Widget bar(double width, double height) => Container(
+      width: width,
+      height: height,
+      decoration: ShapeDecoration(color: fill, shape: const StadiumBorder()),
+    );
+    const widths = [0.72, 0.5, 0.64, 0.42, 0.58];
+    return Semantics(
+      label: l10n.shellLoadingChats,
+      child: FadeTransition(
+        opacity: _opacity,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final row = constraints.maxWidth - 40;
+            return ListView(
+              physics: const NeverScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
+              children: [
+                Padding(padding: const EdgeInsets.only(top: 19, bottom: 9), child: bar(28, 8)),
+                for (final w in widths)
+                  SizedBox(
+                    height: 44,
+                    child: Align(alignment: Alignment.centerLeft, child: bar(row * w, 10)),
+                  ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+/// Keeps an empty view in the upper third of the list area.
+class _Centered extends StatelessWidget {
+  const _Centered({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+          child: Align(
+            alignment: const Alignment(0, -0.4),
+            child: Padding(padding: const EdgeInsets.symmetric(vertical: 24), child: child),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A no-sessions or disconnected state never launches the Android runtime.
+class _EmptyState extends StatelessWidget {
+  const _EmptyState({required this.live});
+
+  final bool live;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    return _Centered(
+      child: EmptyView(
+        compact: true,
+        icon: live ? AppIcons.chat : AppIcons.power,
+        title: live ? l10n.shellNoChatsYet : l10n.shellEngineNotRunning,
+        message: live ? l10n.shellNewChatsHint : null,
+      ),
+    );
+  }
+}
+
+/// The donor's identity-bar layout without a host switcher or feature links.
+class _IdentityBar extends StatelessWidget {
+  const _IdentityBar({required this.live, this.onDetails, this.onDisconnect});
+
+  final bool live;
+  final VoidCallback? onDetails;
+  final VoidCallback? onDisconnect;
+
+  static const keySize = 44.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = context.l10n;
+    final theme = Theme.of(context);
+    final colors = DshColors.of(context);
+    final statusLabel = live ? l10n.commonRunning : l10n.commonNotConnected;
+    final localIcon = DecoratedBox(
+      decoration: ShapeDecoration(color: theme.colorScheme.primaryContainer, shape: const CircleBorder()),
+      child: SizedBox.square(
+        dimension: 36,
+        child: Icon(AppIcons.thisPhone, size: 19, color: theme.colorScheme.onPrimaryContainer),
+      ),
+    );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 9, 10, 13),
+      child: Row(
+        children: [
+          const SizedBox(width: 6),
+          if (onDetails case final details?)
+            IconButton(
+              key: const ValueKey('identity-host-details'),
+              tooltip: l10n.phoneEngineTitle,
+              onPressed: details,
+              padding: const EdgeInsets.all(4),
+              constraints: const BoxConstraints.tightFor(width: keySize, height: keySize),
+              style: IconButton.styleFrom(tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+              icon: localIcon,
+            )
+          else
+            Padding(padding: const EdgeInsets.all(4), child: localIcon),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(l10n.phoneEngineTitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleSmall),
+                  Row(
+                    children: [
+                      StatusDot(tone: live ? StatusTone.ok : StatusTone.idle, size: 6),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          statusLabel,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(color: colors.textTertiary),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (onDisconnect case final disconnect?)
+            Tooltip(
+              message: l10n.commonStop,
+              child: Semantics(
+                button: true,
+                label: l10n.commonStop,
+                onTap: disconnect,
+                excludeSemantics: true,
+                child: SizedBox.square(
+                  key: const ValueKey('ios-drawer-disconnect'),
+                  dimension: keySize,
+                  child: GlassSurface(
+                    tier: GlassTier.pill,
+                    circle: true,
+                    onTap: disconnect,
+                    child: Center(child: Icon(AppIcons.power, size: 22, color: theme.colorScheme.onSurface)),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Same selection footer as the donor, with its one admitted action: filing
+/// the chosen rows in an App-local folder (no Host mutation).
+class _MoveSelectionBar extends ConsumerWidget {
+  const _MoveSelectionBar({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
+    final theme = Theme.of(context);
+    final enabled = ref.watch(drawerSelectionProvider.select((ids) => ids?.isNotEmpty == true));
+    void move() {
+      if (ref.read(readListLiveConnectionProvider)?.isLocal != true ||
+          ref.read(drawerScopeProvider)?.readOnly != false) return;
+      final ids = ref.read(drawerSelectionProvider);
+      if (ids != null && ids.isNotEmpty) unawaited(moveToFolderFlow(context, ref, ids.toList()));
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
+      child: Semantics(
+        button: true,
+        enabled: enabled,
+        label: l10n.shellMoveToFolder,
+        onTap: enabled ? move : null,
+        excludeSemantics: true,
+        child: AnimatedOpacity(
+          opacity: enabled ? 1 : 0.38,
+          duration: AppMotion.of(context, AppMotion.quick),
+          child: Material(
+            type: MaterialType.transparency,
+            child: InkWell(
+              onTap: enabled ? move : null,
+              customBorder: Squircle.border(AppShape.md),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(AppIcons.moveToFolder, size: 22, color: theme.colorScheme.onSurface),
+                  const SizedBox(height: 2),
+                  Text(
+                    l10n.shellMoveToFolder,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.labelSmall?.copyWith(fontSize: 11, height: 1.2),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

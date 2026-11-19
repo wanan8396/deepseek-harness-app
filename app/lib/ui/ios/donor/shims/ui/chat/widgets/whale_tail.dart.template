@@ -1,0 +1,197 @@
+// Materialize at app/lib/ui/chat/widgets/whale_tail.dart.
+import 'dart:math' as math;
+import 'dart:ui' as ui;
+
+import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
+
+import '../../theme/app_icons.dart';
+
+const deepSeekBlue = Color(0xFF4D6BFE);
+const deepSeekBlueDark = Color(0xFF7A98FB);
+
+Color whaleColorFor(Brightness brightness) => brightness == Brightness.dark ? deepSeekBlueDark : deepSeekBlue;
+
+class WhaleSheet {
+  const WhaleSheet(this.image, this.frames, this.frameMs);
+
+  final ui.Image image;
+  final int frames;
+  final int frameMs;
+
+  Duration get loop => Duration(milliseconds: frames * frameMs);
+}
+
+class WhaleAtlas {
+  const WhaleAtlas({required this.frameWidth, required this.frameHeight, required this.columns, required this.levels});
+
+  final int frameWidth;
+  final int frameHeight;
+  final int columns;
+  final Map<int, WhaleSheet> levels;
+
+  double get aspect => frameWidth / frameHeight;
+
+  WhaleSheet sheet(int level) => levels[level.clamp(1, 4)] ?? levels[1]!;
+
+  Rect frameRect(int frame) => Rect.fromLTWH(
+    ((frame % columns) * frameWidth).toDouble(),
+    ((frame ~/ columns) * frameHeight).toDouble(),
+    frameWidth.toDouble(),
+    frameHeight.toDouble(),
+  );
+}
+
+abstract final class WhaleSprites {
+  // The compatibility loader now uses the target's single-frame image.
+  static const manifest = 'assets/branding/whale.png';
+  static const aspect = 120 / 96;
+  static const _darkAsset = 'assets/branding/whale-dark.png';
+
+  static WhaleAtlas? _atlas;
+  static Future<WhaleAtlas>? _loading;
+
+  static WhaleAtlas? get cached => _atlas;
+
+  static Future<WhaleAtlas> load([AssetBundle? bundle]) => _loading ??= _load(bundle ?? rootBundle);
+
+  static Future<WhaleAtlas> _load(AssetBundle bundle) async {
+    try {
+      final data = await bundle.load(manifest);
+      final codec = await ui.instantiateImageCodec(data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes));
+      try {
+        final image = (await codec.getNextFrame()).image;
+        final still = WhaleSheet(image, 1, 0);
+        return _atlas = WhaleAtlas(
+          frameWidth: image.width,
+          frameHeight: image.height,
+          columns: 1,
+          levels: Map.unmodifiable({1: still, 2: still, 3: still, 4: still}),
+        );
+      } finally {
+        codec.dispose();
+      }
+    } catch (_) {
+      _loading = null;
+      rethrow;
+    }
+  }
+}
+
+class WhaleTail extends StatefulWidget {
+  const WhaleTail({super.key, this.level = 1, required this.color, this.height = 20, this.still = false});
+
+  final int level;
+  final Color color;
+  final double height;
+  final bool still;
+
+  @override
+  State<WhaleTail> createState() => WhaleTailState();
+}
+
+/// The chat activity indicator animates the existing whale PNG, not a sprite sheet.
+class WhaleTailState extends State<WhaleTail> with SingleTickerProviderStateMixin {
+  late final Ticker _ticker;
+  final _phase = ValueNotifier<double>(0);
+  bool _reduced = false;
+  late double _rate;
+  Duration _last = Duration.zero;
+
+  static int formOf(int level) => level <= 2 ? 2 : level.clamp(2, 4);
+
+  static double rateOf(int level) => switch (level) {
+    <= 0 => 0.3,
+    1 => 0.5,
+    _ => 1.0,
+  };
+
+  bool get _moving => !widget.still && !_reduced;
+
+  @visibleForTesting
+  int get shownForm => _moving ? formOf(widget.level) : 1;
+
+  @visibleForTesting
+  double get rate => _rate;
+
+  @visibleForTesting
+  int get frame => (_phase.value * 60).floor();
+
+  @override
+  void initState() {
+    super.initState();
+    _rate = rateOf(widget.level);
+    _ticker = createTicker(_tick);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _reduced = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(WhaleTail oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _sync();
+  }
+
+  void _sync() {
+    if (_moving && !_ticker.isActive) {
+      _last = Duration.zero;
+      _rate = rateOf(widget.level);
+      _ticker.start();
+    } else if (!_moving) {
+      _ticker.stop();
+      _phase.value = 0;
+      _rate = rateOf(widget.level);
+    }
+  }
+
+  void _tick(Duration elapsed) {
+    final dt = (elapsed - _last).inMicroseconds / Duration.microsecondsPerSecond;
+    _last = elapsed;
+    if (dt <= 0) return;
+    _rate += (rateOf(widget.level) - _rate) * (1 - math.exp(-dt / 0.35));
+    _phase.value = (_phase.value + dt * _rate / 1.4) % 1.0;
+  }
+
+  @override
+  void dispose() {
+    _ticker.dispose();
+    _phase.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = MediaQuery.maybePlatformBrightnessOf(context) == Brightness.dark;
+    final image = Image.asset(
+      dark ? WhaleSprites._darkAsset : WhaleSprites.manifest,
+      fit: BoxFit.contain,
+      color: widget.color,
+      colorBlendMode: BlendMode.srcIn,
+      filterQuality: FilterQuality.medium,
+      excludeFromSemantics: true,
+      errorBuilder: (context, error, stack) => Icon(AppIcons.running, color: widget.color, size: widget.height),
+    );
+    return ExcludeSemantics(
+      child: SizedBox(
+        width: widget.height * WhaleSprites.aspect,
+        height: widget.height,
+        child: !_moving
+            ? image
+            : ValueListenableBuilder<double>(
+                valueListenable: _phase,
+                child: FractionallySizedBox(heightFactor: 0.88, widthFactor: 0.88, child: image),
+                builder: (context, phase, child) => Transform.translate(
+                  offset: Offset(0, math.sin(phase * 2 * math.pi) * widget.height * 0.05),
+                  child: child,
+                ),
+              ),
+      ),
+    );
+  }
+}
