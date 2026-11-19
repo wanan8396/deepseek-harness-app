@@ -37,7 +37,14 @@ final class IosImageNormalizerTests: XCTestCase {
     XCTAssertEqual(outputProperties[kCGImagePropertyPixelHeight] as? Int, result.height)
     XCTAssertTrue(outputProperties[kCGImagePropertyOrientation] == nil ||
                   outputProperties[kCGImagePropertyOrientation] as? Int == 1)
-    XCTAssertNil(outputProperties[kCGImagePropertyExifDictionary])
+    // ImageIO re-derives baseline EXIF tags (pixel dimensions, colour space)
+    // for a freshly encoded image; what must not survive is the source
+    // capture metadata and this fixture's private comment.
+    if let exif = outputProperties[kCGImagePropertyExifDictionary] as? [CFString: Any] {
+      XCTAssertNil(exif[kCGImagePropertyExifUserComment])
+      XCTAssertNil(exif[kCGImagePropertyExifDateTimeOriginal])
+      XCTAssertNil(exif[kCGImagePropertyExifLensModel])
+    }
     XCTAssertNil(outputProperties[kCGImagePropertyGPSDictionary])
     XCTAssertNil(result.data.range(of: Data(marker.utf8)))
   }
