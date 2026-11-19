@@ -48,3 +48,15 @@ The [generator tests](../tooling/test_stage_ios_flutter.py) cover policy cutouts
 ```sh
 python3 -m unittest discover -s tooling -p test_stage_ios_flutter.py -v
 ```
+
+## Assembled iOS checkout
+
+[`tooling/assemble_ios_flutter.py`](../tooling/assemble_ios_flutter.py) writes a throwaway checkout that keeps this repository's iPhone shell, theme, startup GIF and iOS bridge, restores the reviewed historical chat, session drawer, model and approval widgets, and applies the reviewed `app/lib/ui/ios/donor/*.template` replacements for the Android-only or removed-art surfaces. It never writes into the checked-in `app/`, never includes `app/android/`, and fails closed if a patch site, template or relative Dart import is missing. The target keeps its own `main.dart` and hands the staged entry its own Riverpod container, so the historical provider graph cannot fall back to Android providers.
+
+```sh
+python3 tooling/assemble_ios_flutter.py --target-root . --output /tmp/ios-flutter \
+  --vendor-manifest-sha256 PINNED_MANIFEST_SHA256
+python3 -m unittest discover -s tooling -p test_assemble_ios_flutter.py -v
+```
+
+The `flutter-ui` job runs the assembler from the tracked snapshot, then `flutter pub get`, `flutter analyze --no-fatal-infos`, the staged carrier tests and a Simulator debug build. Those gates prove the historical UI compiles; they are not a substitute for on-device signing or real model traffic. `--include-untracked` exists only for a local overlay clone whose new iOS files are not committed yet.

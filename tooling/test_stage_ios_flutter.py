@@ -16,7 +16,7 @@ import stage_ios_flutter as stage
 
 
 EXTRA_SOURCE = 'app/lib/ui/chat/message.dart'
-TEST_SOURCE = 'app/test/chat/message_test.dart'
+TEST_SOURCE = 'app/test/chat/approval_reason_locale_test.dart'
 L10N_INPUT = 'app/lib/l10n/parts/chat_en.arb'
 EXCLUDED = {
     'app/assets/branding/startup-cover.gif',
@@ -37,6 +37,8 @@ EXCLUDED = {
     'app/ios/Runner/AppDelegate.swift',
     'app/test/chat/goldens/preview.png',
     'app/test/chat/fixtures/maybe_private.dart',
+    'app/test/chat/some_other_test.dart',
+    'packages/dsh_client/test/some_other_test.dart',
     'packages/dsh_remote/test/fixtures/credential.json',
     'runtime/install.sh',
     'site/home/dist/index.html',

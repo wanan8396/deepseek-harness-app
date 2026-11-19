@@ -72,17 +72,20 @@ UI_AREAS = frozenset('''
     providers remote replay safe_mode session settings share share_code
     share_hosted shell star terminal update wallpaper web workspace
 '''.split())
-APP_TEST_AREAS = frozenset('''
-    account agents chat common diagnostics engine engine_settings files l10n
-    landscape links local_web_lite notify onboarding providers remote replay
-    runtime search session settings share share_code share_hosted shell state
-    support terminal theme web workspace
-'''.split())
+REFERENCE_TESTS = frozenset({
+    'app/test/chat/approval_reason_locale_test.dart',
+    'app/test/chat/attachments_test.dart',
+    'app/test/chat/chat_host_approval_test.dart',
+    'app/test/chat/chat_screen_test.dart',
+    'app/test/chat/model_sheet_test.dart',
+    'packages/dsh_client/test/carrier_test.dart',
+    'packages/dsh_client/test/mux_pending_order_test.dart',
+    'packages/dsh_client/test/session_search_test.dart',
+})
 # The donor ASSETS.md explicitly calls out the generated brand glyph. The tile
 # paths are also generated from art masters. Do not stage either or their visual
-# wrappers, the target's theme/startup, or generated l10n/replay output.
+# wrappers, the target's theme/startup, or generated localization output.
 OMIT = frozenset({
-    'app/lib/share_code/replay_viewer.g.dart',
     'app/lib/ui/chat/widgets/whale_tail.dart',
     'app/lib/ui/common/feature_tile.dart',
     'app/lib/ui/common/feature_tile_shapes.g.dart',
@@ -120,7 +123,7 @@ def classify(path: str) -> str | None:
         return 'l10n-input'
     if path in SOURCE:
         return 'source'
-    if path == 'app/test/flutter_test_config.dart':
+    if path in REFERENCE_TESTS:
         return 'test-source'
     if not path.endswith('.dart'):
         return None
@@ -131,13 +134,8 @@ def classify(path: str) -> str | None:
         if parts[2] == 'ui' and (len(parts) < 5 or parts[3] not in UI_AREAS):
             return None
         return 'source'
-    if parts[:2] == ['app', 'test'] and len(parts) >= 4 and parts[2] in APP_TEST_AREAS:
-        return 'test-source'
-    if len(parts) >= 4 and parts[0] == 'packages' and parts[1] in ('dsh_client', 'dsh_remote'):
-        if parts[2] == 'lib':
-            return 'source'
-        if parts[2] == 'test':
-            return 'test-source'
+    if len(parts) >= 4 and parts[0] == 'packages' and parts[1] in ('dsh_client', 'dsh_remote') and parts[2] == 'lib':
+        return 'source'
     return None
 
 

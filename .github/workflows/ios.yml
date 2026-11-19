@@ -26,6 +26,8 @@ jobs:
           python3 -m unittest discover -s tooling -p test_ios_engine_pin.py -v
           python3 -m unittest discover -s tooling -p test_prepare_ios_loader.py -v
           python3 -m unittest discover -s tooling -p test_stage_ios_flutter.py -v
+          python3 -m unittest discover -s tooling -p test_assemble_ios_flutter.py -v
+          python3 tooling/stage_ios_flutter.py reverify --target-root . --manifest-sha256 22938d17808b41adba5def222910afbb0c717e14871f4ad39afd25f461220f69
       - name: Resolve exact official dependency lock into isolated seed
         run: |
           mkdir -p "$RUNNER_TEMP/dsh-ios-seed"
@@ -281,5 +283,77 @@ jobs:
             ${{ runner.temp }}/ios-web-render.log
             ${{ runner.temp }}/ios-simulator-build.log
             app/ios/Pods/Target Support Files/DshEmbeddedNode/
+          if-no-files-found: warn
+          retention-days: 7
+  flutter-ui:
+    needs: loader
+    name: Historical Flutter UI staging and analysis
+    runs-on: macos-15
+    timeout-minutes: 40
+    continue-on-error: true
+    env:
+      FLUTTER_VERSION: 3.47.7
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+      TZ: Asia/Shanghai
+      DONOR_MANIFEST_SHA256: 22938d17808b41adba5def222910afbb0c717e14871f4ad39afd25f461220f69
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Stage the historical UI over the current iOS shell
+        run: |
+          python3 tooling/assemble_ios_flutter.py --target-root . --output "$RUNNER_TEMP/dsh-ios-flutter" \
+            --vendor-manifest-sha256 "$DONOR_MANIFEST_SHA256"
+          stage="$RUNNER_TEMP/dsh-ios-flutter"
+          test -f "$stage/app/lib/ui/chat/chat_screen.dart"
+          test -f "$stage/app/lib/ui/shell/home_shell.dart"
+          test -f "$stage/app/lib/ui/shell/sessions_drawer.dart"
+          test -f "$stage/app/lib/ui/chat/widgets/approval_card.dart"
+          test ! -d "$stage/app/android"
+          grep -q "runApp(const IosFlutterEntry())" "$stage/app/lib/main.dart"
+          grep -q "import 'ui/ios/ios_flutter_entry.dart';" "$stage/app/lib/main.dart"
+          test -f "$stage/app/assets/branding/startup-cover.gif"
+      - name: Resolve staged dependencies
+        working-directory: ${{ runner.temp }}/dsh-ios-flutter/app
+        run: flutter pub get
+      - name: Analyze the staged application
+        id: analyze
+        working-directory: ${{ runner.temp }}/dsh-ios-flutter/app
+        run: flutter analyze --no-pub --no-fatal-infos 2>&1 | tee "$RUNNER_TEMP/ios-flutter-analyze.log"
+      - name: Run the staged carrier tests
+        id: carrier-tests
+        continue-on-error: true
+        working-directory: ${{ runner.temp }}/dsh-ios-flutter/app
+        run: flutter test --no-pub test/ios/ios_official_carrier_test.dart test/ios/ios_dsh_client_adapter_test.dart 2>&1 | tee "$RUNNER_TEMP/ios-flutter-tests.log"
+      - name: Build the staged Simulator application
+        id: staged-build
+        continue-on-error: true
+        working-directory: ${{ runner.temp }}/dsh-ios-flutter/app
+        run: |
+          set -o pipefail
+          flutter build ios --simulator --debug --no-pub --build-name 0.2.2 --build-number "$GITHUB_RUN_NUMBER" 2>&1 | tee "$RUNNER_TEMP/ios-flutter-build.log"
+      - name: Publish staged verification status
+        if: always()
+        run: |
+          printf '{"analyze":"%s","carrierTests":"%s","simulatorBuild":"%s","historicalFlutterUi":true,"signedForDevice":false}\n' \
+            '${{ steps.analyze.outcome }}' '${{ steps.carrier-tests.outcome }}' '${{ steps.staged-build.outcome }}' \
+            > "$RUNNER_TEMP/ios-flutter-status.json"
+          cat "$RUNNER_TEMP/ios-flutter-status.json"
+      - name: Preserve staging evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: ios-flutter-stage
+          path: |
+            ${{ runner.temp }}/dsh-ios-flutter/.ios-flutter-stage.json
+            ${{ runner.temp }}/ios-flutter-analyze.log
+            ${{ runner.temp }}/ios-flutter-tests.log
+            ${{ runner.temp }}/ios-flutter-build.log
+            ${{ runner.temp }}/ios-flutter-status.json
           if-no-files-found: warn
           retention-days: 7
