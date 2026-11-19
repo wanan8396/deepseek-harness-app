@@ -1,17 +1,24 @@
 import { Buffer } from 'node:buffer';
 import { lstat, mkdir, realpath } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
+import { apply as applyObservationPolicy } from '@deepseek-ai/dsh-fs-observation-policy';
 import { LlmAdapter } from '@deepseek-ai/dsh-llm';
+import { createScope, scopeOf } from '@deepseek-ai/dsh-scope';
+import { apply as applyFsTools } from '@deepseek-ai/dsh-tool-fs';
 import {
   CHAT_CHANNEL_PROVIDER, createChatChannelAdapter, guardChatChannelStream, normalizeChatChannel,
 } from './chat-model-channel.mjs';
-import { registerChatWorkspaceTools } from './chat-workspace-tools.mjs';
+import {
+  createOfficialWorkspaceFileSystem, OFFICIAL_WORKSPACE_PATH, registerOfficialWorkspaceSearch,
+} from './official-workspace-fs.mjs';
 
 const WORKSPACE = 'Workspace';
-const CREATE_TOOL = 'workspace_create_text';
-const TOOLS = new Set(['workspace_list', 'workspace_read_text', CREATE_TOOL]);
-const APPROVAL_REASON = 'Create a new file in this app’s workspace';
-const APPROVAL_TIMEOUT_MS = 60_000;
+const MUTATIONS = new Set(['write', 'edit']);
+const FS_TOOL_CONFIG = Object.freeze({
+  read: true, write: true, edit: true, readImage: false, applyPatch: false,
+  readLimit: 200, readMaxLineLength: 2000, readMaxBytes: 8192, readStreamMinSize: 4096,
+});
+const APPROVAL_REASON = 'Change a file in this app’s workspace';
 const DISPLAY_LIMIT = 1536;
 const mounted = new WeakSet();
 
@@ -70,13 +77,80 @@ async function canonicalWorkspace(stateDirectory, workspace) {
 
 function approvalDisplay(action) {
   // Keep invisible formatting controls visible and do not cut the path.
-  const title = `${APPROVAL_REASON}\n${JSON.stringify(action.path)} (${action.byteLength} UTF-8 bytes)`;
+  const operation = action.operation === 'create' ? 'Create' : 'Update';
+  const title = `${operation} ${JSON.stringify(action.path)} (${action.byteLength} UTF-8 bytes)`;
   const preview = JSON.stringify(action.preview).replace(/[\p{Cf}\p{Zl}\p{Zp}]/gu, char => {
     const code = char.codePointAt(0);
     return code <= 0xFFFF ? `\\u${code.toString(16).padStart(4, '0')}` : `\\u{${code.toString(16)}}`;
   });
   const detail = `${title}\nPreview: ${preview}${action.previewTruncated ? ' …' : ''}`;
   return Buffer.byteLength(detail) <= DISPLAY_LIMIT ? detail : title;
+}
+
+function mountAgentWorkspace(owner, agent, directory, containsSensitiveText, life, mounts) {
+  // The physical session directory is assigned by the App Host, not by the
+  // model. Non-Workspace agents must never inherit a filesystem tool layer.
+  if (agent.session.header.cwd !== directory || mounts.has(agent)) return;
+  if (scopeOf(agent.ctx) !== agent || life.aborted) throw failure('IOS_OFFICIAL_APP_SERVICES_CLOSED');
+  const mount = createScope(agent.ctx, agent);
+  mounts.set(agent, mount);
+  const isolated = mount.ctx.isolate('fs').isolate('workingDirectory');
+  const controller = new AbortController();
+  const signal = AbortSignal.any([life, controller.signal]);
+  let dispatch;
+  isolated.effect(() => () => {
+    controller.abort();
+    mounts.delete(agent);
+  });
+
+  createOfficialWorkspaceFileSystem(isolated, {
+    directory, containsSensitiveText, lifetimeSignal: signal,
+    async approve(action, approvalSignal, callerSignal) {
+      const active = dispatch;
+      const live = () => dispatch === active && active.exec.agent === agent
+        && active.exec.name === action.tool && active.exec.callId === active.callId
+        && active.exec.signal === callerSignal && !signal.aborted && !approvalSignal.aborted;
+      if (!active || active.requested || !live()) return false;
+      active.requested = true;
+      const display = approvalDisplay(action);
+      if (containsSensitiveText(display)) return false;
+      const decision = await owner.approval.request({
+        agent, callId: active.callId, toolName: action.tool, signal: approvalSignal,
+        reason: APPROVAL_REASON, displayReason: { en: display },
+      });
+      return decision === 'allowed-once' && live();
+    },
+  });
+  isolated.provide('workingDirectory', Object.freeze({
+    async ensure(requester, callerSignal) {
+      if (requester !== agent || signal.aborted || callerSignal?.aborted) {
+        throw failure('IOS_OFFICIAL_WORKSPACE_UNAVAILABLE');
+      }
+      return OFFICIAL_WORKSPACE_PATH;
+    },
+  }));
+  isolated.systemPrompt.context({
+    name: 'ios-workspace:current', order: isolated.systemPrompt.getContextOrder('WORKING_DIRECTORY'),
+    interpolate: false, text: `Current working directory: ${JSON.stringify(OFFICIAL_WORKSPACE_PATH)}.`,
+  });
+  isolated.on('tools/execute', async (exec, next) => {
+    if (exec.agent !== agent || !MUTATIONS.has(exec.name)) return next();
+    if (signal.aborted || dispatch || exec.parent !== undefined || typeof exec.callId !== 'string'
+        || !exec.callId || containsSensitiveText(exec.callId)) throw failure('IOS_OFFICIAL_WORKSPACE_UNAVAILABLE');
+    const previous = exec.signal;
+    // Giving each dispatch its own wrapper signal makes the rc.3 pipeline fuse
+    // a fresh body signal. The provider compares the *live* exec.signal above,
+    // not this wrapper signal or a model-supplied tool ID alone.
+    exec.signal = AbortSignal.any([signal, previous]);
+    dispatch = { exec, callId: exec.callId, requested: false };
+    try { return await next(); }
+    finally {
+      dispatch = undefined;
+      exec.signal = previous;
+    }
+  }, { prepend: true });
+  applyFsTools(isolated, FS_TOOL_CONFIG);
+  registerOfficialWorkspaceSearch(isolated);
 }
 
 // Join the lifetime at adapter dispatch, where the actual HTTP request sees it.
@@ -96,9 +170,9 @@ class LifetimeChannelAdapter extends LlmAdapter {
 }
 
 /**
- * One installation per live Host. The three tools are registered with the real
- * tools service; the Host also needs its native executor row and, for browser
- * answers, the official dsh-api-remotes event source and answering peer.
+ * One observation-policy installation per live Host. Only admitted Agents
+ * receive the official text tools; the Host needs its native executor row and,
+ * for browser answers, the official dsh-api-remotes event source and answering peer.
  * Native inputs must never come from the WebKit page. The Host must use
  * containsSensitiveText before accepting RPC content into a durable Session.
  */
@@ -108,6 +182,8 @@ export async function registerOfficialAppServices(ctx, { workspace, stateDirecto
   if (!ctx || typeof ctx.plugin !== 'function' || typeof ctx.get !== 'function'
       || typeof ctx.get('llm')?.registerAdapter !== 'function'
       || typeof ctx.get('tools')?.register !== 'function'
+      || typeof ctx.get('agents')?.list !== 'function'
+      || typeof ctx.get('systemPrompt')?.context !== 'function'
       || typeof ctx.get('approval')?.request !== 'function'
       || !(lifetimeSignal instanceof AbortSignal)) throw failure('IOS_OFFICIAL_APP_SERVICES_UNAVAILABLE');
   if (mounted.has(ctx)) throw failure('IOS_OFFICIAL_APP_SERVICES_ALREADY_MOUNTED');
@@ -123,6 +199,7 @@ export async function registerOfficialAppServices(ctx, { workspace, stateDirecto
   life.addEventListener('abort', forgetKey, { once: true });
   let fiber;
   let closing;
+  const mounts = new Map();
   const deactivate = () => {
     controller.abort();
     forgetKey();
@@ -137,38 +214,24 @@ export async function registerOfficialAppServices(ctx, { workspace, stateDirecto
   try {
     const directory = await canonicalWorkspace(stateDirectory, workspace);
     if (life.aborted) throw failure('IOS_OFFICIAL_APP_SERVICES_CLOSED');
-    fiber = ctx.plugin({ name: 'ios-official-app-services', inject: ['llm', 'tools', 'approval'],
-      async apply(scope) {
-        scope.effect(() => deactivate);
+    fiber = ctx.plugin({ name: 'ios-official-app-services', inject: ['llm', 'tools', 'agents', 'systemPrompt', 'approval'],
+      apply(scope) {
+        scope.effect(() => async () => {
+          deactivate();
+          await Promise.all([...mounts.values()].map(mount => mount.dispose()));
+        });
         scope.on('llm/stream', (options, next) => {
           if (options.provider !== CHAT_CHANNEL_PROVIDER) return next();
           const signal = options.signal ? AbortSignal.any([life, options.signal]) : life;
           return guardChatChannelStream(next, key, signal, options.tools);
         }, { prepend: true });
-        scope.on('tools/execute', async (exec, next) => {
-          if (!TOOLS.has(exec.name)) return next();
-          const previous = exec.signal;
-          exec.signal = AbortSignal.any([life, previous]);
-          try { return await next(); }
-          finally { exec.signal = previous; }
-        }, { prepend: true });
-        await registerChatWorkspaceTools(scope, {
-          directory,
-          containsSecret: containsSensitiveText,
-          approve: async (action, signal, exec) => {
-            if (action.toolName !== CREATE_TOOL || exec?.name !== CREATE_TOOL || exec.signal !== signal
-                || !exec.agent?.session || typeof exec.callId !== 'string' || !exec.callId
-                || containsSensitiveText(exec.callId) || life.aborted || signal.aborted) return false;
-            const display = approvalDisplay(action);
-            if (containsSensitiveText(display)) return false;
-            const combined = AbortSignal.any([signal, life, AbortSignal.timeout(APPROVAL_TIMEOUT_MS)]);
-            const decision = await scope.approval.request({
-              agent: exec.agent, callId: exec.callId, toolName: CREATE_TOOL, signal: combined,
-              reason: APPROVAL_REASON, displayReason: { en: display },
-            });
-            return decision === 'allowed-once' && !combined.aborted;
-          },
-        });
+        // The rc.3 filesystem intent waterfalls are unbound; the official
+        // policy owns these event slots once, not once per Agent. Its state is
+        // keyed by Session plus the isolated provider's salted target key.
+        applyObservationPolicy(scope);
+        const mount = agent => mountAgentWorkspace(scope, agent, directory, containsSensitiveText, life, mounts);
+        scope.on('agent/created', ({ agent }) => { mount(agent); });
+        for (const agent of scope.agents.list()) mount(agent);
         if (life.aborted) throw failure('IOS_OFFICIAL_APP_SERVICES_CLOSED');
         const adapter = createChatChannelAdapter(directory, route, () => key);
         scope.llm.registerAdapter([CHAT_CHANNEL_PROVIDER], new LifetimeChannelAdapter(adapter, life));

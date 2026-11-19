@@ -8,12 +8,17 @@ import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { TextDecoder } from 'node:util';
 import { Context } from '@deepseek-ai/cordis';
 import { FileSystem, FsError } from '@deepseek-ai/dsh-fs';
+import { defineTool } from '@deepseek-ai/dsh-tools';
 
 export const OFFICIAL_WORKSPACE_PATH = '/workspace';
 export const OFFICIAL_WORKSPACE_LIMITS = Object.freeze({ readBytes: 16_384, writeBytes: 4096 });
 const MAX_PATH_BYTES = 480;
 const MAX_DEPTH = 8;
 const MAX_DIRECTORY_PROBES = 512;
+const SEARCH_ENTRIES = 192;
+const SEARCH_BYTES = 256 * 1024;
+const SEARCH_MATCHES = 24;
+const SEARCH_LINES = 16;
 const APPROVAL_TIMEOUT_MS = 60_000;
 const PREVIEW_BYTES = 256;
 const STATS = { bigint: true };
@@ -385,6 +390,81 @@ export function createOfficialWorkspaceFileSystem(ctx, {
       return read(parts, inspect(parts), OFFICIAL_WORKSPACE_LIMITS.readBytes, signal);
     } catch (error) { return safeError(error); }
   }
+  async function searchWorkspace(target, { mode, query } = {}, signal) {
+    try {
+      check(signal);
+      if (mode !== 'path' && mode !== 'text') denied();
+      checkedText(query, 160);
+      if (!query.trim() || /[\r\n]/u.test(query)) denied();
+      const base = locate(target);
+      publicText(logicalPath(base));
+      const start = inspect(base);
+      if (!start.info) absent();
+      if (!dirAllowed(start.info)) fail('FS_NOT_DIRECTORY', 'The search root must be a Workspace directory.');
+      const matches = [];
+      let entries = 0;
+      let scannedBytes = 0;
+      let truncated = false;
+      function visit(parts, current) {
+        check(signal);
+        if (matches.length === SEARCH_MATCHES) { truncated = true; return false; }
+        const names = [];
+        const dir = opendirSync(current.path, { encoding: 'buffer', bufferSize: 16 });
+        try {
+          for (let entry; (entry = dir.readSync());) {
+            if (entries === SEARCH_ENTRIES) { truncated = true; break; }
+            entries += 1;
+            let name;
+            try { name = decoder.decode(entry.name); } catch { continue; }
+            if (validName(name)) names.push(name);
+          }
+        } finally { dir.closeSync(); }
+        requireSame(current, inspect(parts));
+        for (const name of names.sort()) {
+          check(signal);
+          const child = [...parts, name];
+          const path = logicalPath(child);
+          if (bytes(path) > MAX_PATH_BYTES || containsSensitiveText(path)) continue;
+          const info = lstatSync(join(current.path, name), LSTAT);
+          if (!info) continue;
+          if (dirAllowed(info)) {
+            if (child.length === MAX_DEPTH) truncated = true;
+            else if (!visit(child, inspect(child))) return false;
+          } else if (fileAllowed(info)) {
+            if (matches.length === SEARCH_MATCHES) { truncated = true; return false; }
+            if (mode === 'path') {
+              if (path.slice(OFFICIAL_WORKSPACE_PATH.length + 1).includes(query)) matches.push({ path });
+              continue;
+            }
+            const cap = OFFICIAL_WORKSPACE_LIMITS.readBytes;
+            if (info.size > BigInt(cap)) continue;
+            const size = Number(info.size);
+            if (scannedBytes + size > SEARCH_BYTES) { truncated = true; return false; }
+            scannedBytes += size;
+            let text;
+            try { text = read(child, inspect(child), size, signal); }
+            catch (error) {
+              if (error instanceof FsError && ['FS_NOT_TEXT', 'FS_PERMISSION_DENIED'].includes(error.code)) continue;
+              throw error;
+            }
+            const lines = [];
+            for (const [index, line] of normalize(text).split('\n').entries()) {
+              if (!line.includes(query)) continue;
+              if (lines.length === SEARCH_LINES) { truncated = true; break; }
+              lines.push(index + 1);
+            }
+            if (lines.length) matches.push({ path, lines });
+          }
+        }
+        return true;
+      }
+      if (base.length === MAX_DEPTH) return { matches, truncated: true };
+      visit(base, start);
+      const result = { matches, truncated };
+      publicText(JSON.stringify(result));
+      return result;
+    } catch (error) { return safeError(error); }
+  }
   return new IOSWorkspaceFileSystem(ctx, {
     // Deliberately inherit sandboxMode=undefined: rc.3 maps non-undefined to
     // an escalation protocol. This capability has no wider execution mode.
@@ -419,6 +499,7 @@ export function createOfficialWorkspaceFileSystem(ctx, {
       } catch (error) { return safeError(error); }
     },
     readText,
+    searchWorkspace,
     async streamText(target, signal) {
       // Validate the whole bounded file, including the secret predicate, before
       // the first chunk becomes observable to the official read renderer.
@@ -428,4 +509,35 @@ export function createOfficialWorkspaceFileSystem(ctx, {
     writeText: (target, content, guard, signal, policy) => mutate('write', target, content, guard, signal, policy),
     editText: (target, edit, guard, signal, policy) => mutate('edit', target, edit, guard, signal, policy),
   });
+}
+
+/** iOS-only search in the scoped official registry. No shell, glob expansion,
+ * regular expressions, text excerpts, external processes, or host paths. */
+export function registerOfficialWorkspaceSearch(ctx) {
+  ctx.tools.register(defineTool({
+    name: 'workspace_search',
+    description: 'Search the private Workspace for a case-sensitive literal substring in UTF-8 file contents or relative file paths. Text mode returns line numbers; use read to inspect matches.',
+    parameters: {
+      mode: { type: 'string', required: true, enum: ['path', 'text'] },
+      query: { type: 'string', required: true, description: 'One nonblank literal line, up to 160 UTF-8 bytes.' },
+      directory: { type: 'string', description: 'Workspace directory to search (defaults to the workspace root).' },
+    },
+    output: {
+      schema: { type: 'object', additionalProperties: false, properties: {
+        matches: { type: 'array', required: true, items: { type: 'object', additionalProperties: false, properties: {
+          path: { type: 'string', required: true },
+          lines: { type: 'array', items: { type: 'integer' } },
+        } } },
+        truncated: { type: 'boolean', required: true },
+      } },
+      render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
+    },
+    async execute(args, exec) {
+      const { signal } = exec;
+      if (Object.keys(args).some(key => !['mode', 'query', 'directory'].includes(key))) denied();
+      const cwd = await ctx.workingDirectory.ensure(exec.agent, signal);
+      const root = await ctx.fs.resolve(args.directory ?? '.', { cwd, signal });
+      return ctx.fs.searchWorkspace(root, args, signal);
+    },
+  }));
 }

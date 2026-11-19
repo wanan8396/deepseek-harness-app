@@ -25,6 +25,9 @@ public final class IosLocalEnginePlugin: NSObject, FlutterPlugin {
   private var deadline: Date?
   private var reportURL: URL?
   private var timedOut = false
+  #if DSH_DEBUG_SIMULATOR_TEST && targetEnvironment(simulator)
+  private var flutterSimulatorProbe: (script: String, directory: URL)?
+  #endif
 
   private override init() { super.init() }
 
@@ -41,6 +44,12 @@ public final class IosLocalEnginePlugin: NSObject, FlutterPlugin {
       return
     }
     switch call.method {
+    #if DSH_DEBUG_SIMULATOR_TEST && targetEnvironment(simulator)
+    case "enableFlutterSimulatorFixture":
+      enableFlutterSimulatorFixture(call.arguments, result: result)
+    case "flutterSimulatorApprovedFileState":
+      flutterSimulatorApprovedFileState(call.arguments, result: result)
+    #endif
     case "getStatus": result(snapshot())
     case "startProbe":
       ensureNodeStarted()
@@ -246,15 +255,58 @@ public final class IosLocalEnginePlugin: NSObject, FlutterPlugin {
     } catch { return nil }
   }
 
+  #if DSH_DEBUG_SIMULATOR_TEST && targetEnvironment(simulator)
+  private func enableFlutterSimulatorFixture(_ arguments: Any?, result: FlutterResult) {
+    guard arguments == nil || arguments is NSNull,
+          state == "idle", flutterSimulatorProbe == nil,
+          let probe = Bundle(for: DshEmbeddedNode.self).url(forResource: "probe", withExtension: "cjs"),
+          let script = Bundle.main.url(forResource: "flutter-simulator-entry", withExtension: "cjs",
+            subdirectory: "dsh-flutter-simulator-fixture"),
+          Bundle.main.url(forResource: "chat-ci-entry", withExtension: "cjs",
+            subdirectory: "dsh-flutter-simulator-fixture") != nil else {
+      result(Self.chatError("IOS_FLUTTER_SIMULATOR_FIXTURE_UNAVAILABLE")); return
+    }
+    // Keep the SQLite store, mailbox and workspace separate from ordinary App data.
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    do {
+      try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false,
+        attributes: [.posixPermissions: 0o700])
+      try probe.path.write(to: directory.appendingPathComponent("probe-path.txt"), atomically: true, encoding: .utf8)
+      flutterSimulatorProbe = (script.path, directory)
+      result(nil)
+    } catch {
+      try? FileManager.default.removeItem(at: directory)
+      result(Self.chatError("IOS_FLUTTER_SIMULATOR_FIXTURE_UNAVAILABLE"))
+    }
+  }
+
+  private func flutterSimulatorApprovedFileState(_ arguments: Any?, result: FlutterResult) {
+    guard arguments == nil || arguments is NSNull, let fixture = flutterSimulatorProbe else {
+      result(Self.chatError("IOS_FLUTTER_SIMULATOR_FIXTURE_UNAVAILABLE")); return
+    }
+    let file = fixture.directory.appendingPathComponent("OfficialAppState/Workspace/official-approved.txt")
+    guard FileManager.default.fileExists(atPath: file.path) else { result("absent"); return }
+    let actual = try? Data(contentsOf: file)
+    result(actual == Data("official simulator approved\n".utf8) ? "matches" : "different")
+  }
+  #endif
+
   private func ensureNodeStarted() {
     guard state == "idle" else { return }
     let resources = Bundle(for: DshEmbeddedNode.self)
-    guard let script = resources.path(forResource: "probe", ofType: "cjs"),
+    guard let productionScript = resources.path(forResource: "probe", ofType: "cjs"),
           resources.path(forResource: "requirements", ofType: "json") != nil,
           resources.path(forResource: "meta-probe", ofType: "mjs") != nil else {
       state = "error"; reason = "runtime_unavailable"; return
     }
-    guard let directory = runtimeDirectory else {
+    #if DSH_DEBUG_SIMULATOR_TEST && targetEnvironment(simulator)
+    let script = flutterSimulatorProbe?.script ?? productionScript
+    let root = flutterSimulatorProbe?.directory ?? runtimeDirectory
+    #else
+    let script = productionScript
+    let root = runtimeDirectory
+    #endif
+    guard let directory = root else {
       state = "error"; reason = "probe_failed"; return
     }
     // Never accept a stale report left by an earlier application process. Chat

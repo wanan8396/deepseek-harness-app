@@ -182,22 +182,22 @@ function customResponse(init, headers) {
 const officialModel = 'ios-production-fixture';
 const officialKey = 'ios-prod-ci-not-a-credential';
 const officialPrompt = 'official-tool-fixture';
-const officialCall = { id: 'call_ios_prod_ci', name: createTool,
-  args: { path: 'official-approved.txt', text: 'official simulator approved\n' } };
+const officialCall = { id: 'call_ios_prod_ci', name: 'write',
+  args: { file_path: 'official-approved.txt', content: 'official simulator approved\n' } };
 function officialResponse(init, headers) {
   assert.equal(headers.get('authorization'), `Bearer ${officialKey}`);
   assert.ok(!init.body.includes(officialKey));
   const { model, messages, stream, tools } = JSON.parse(init.body);
   assert.equal(model, officialModel);
   assert.equal(stream, true);
-  assert.deepEqual(tools.map(item => item.function.name).sort(), toolNames);
+  assert.deepEqual(tools.map(item => item.function.name).sort(), ['edit', 'read', 'workspace_search', 'write']);
   const index = messages.findLastIndex(message => message.role === 'user' && message.content === officialPrompt);
   assert.ok(index >= 0, 'OFFICIAL_COMPOSER_PROMPT_UNKNOWN');
   const follow = messages.slice(index + 1).filter(message => message.role !== 'system');
   const tool = follow.findIndex(message => message.role === 'tool' && message.tool_call_id === officialCall.id);
   if (tool === -1) return issueCall(officialCall, null, officialModel);
   expectToolResult(follow.slice(tool - 1, tool + 1), officialCall,
-    { path: officialCall.args.path, byteLength: Buffer.byteLength(officialCall.args.text) });
+    `<path>/workspace/${officialCall.args.file_path}</path>\n<type>file</type>\n<content>\nCreated file\n</content>`);
   return openAiSse([{ role: 'assistant', content: 'official-tool-result' }], 'stop', officialModel);
 }
 

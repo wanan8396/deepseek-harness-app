@@ -212,6 +212,7 @@ class _IosFlutterEntryState extends State<IosFlutterEntry> {
                     Text(_text('官方引擎在设备内运行；模型请求通过 HTTPS 发送。', 'The official engine runs on this device; model requests use HTTPS.')),
                     const SizedBox(height: 16),
                     SwitchListTile.adaptive(
+                      key: const ValueKey('ios-flutter-custom-channel'),
                       title: Text(_text('自定义 OpenAI 兼容服务', 'Custom OpenAI-compatible service')),
                       contentPadding: EdgeInsets.zero,
                       value: _custom,

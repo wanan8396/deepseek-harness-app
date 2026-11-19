@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { lstat, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { lstat, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { Server, Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -25,8 +25,9 @@ const rows = ['session-projection', 'session', 'system-prompt', 'tools', 'tool-e
 const channel = Object.freeze({ protocol: 'openai-chat', baseUrl: 'https://models.example/v1', modelId: 'fixture-model' });
 const apiKey = 'ci-test-only-not-a-credential';
 const text = 'fixture 雪🧪\nsecond line\n';
-const toolName = 'workspace_create_text';
-const stateDirectory = await mkdtemp(join(tmpdir(), 'dsh-ios-app-services-'));
+const toolName = 'write';
+const toolNames = ['edit', 'read', 'workspace_search', toolName];
+const stateDirectory = await mkdtemp(join(await realpath(tmpdir()), 'dsh-ios-app-services-'));
 const workspace = join(stateDirectory, 'Workspace');
 const config = join(stateDirectory, 'cordis.json');
 const lifetime = new AbortController();
@@ -96,7 +97,7 @@ try {
     assert.ok(!init.body.includes(apiKey));
     const { messages, model, tools } = JSON.parse(init.body);
     assert.equal(model, channel.modelId);
-    assert.deepEqual(tools.map(item => item.function.name).sort(), [toolName, 'workspace_list', 'workspace_read_text']);
+    assert.deepEqual(tools.map(item => item.function.name).sort(), toolNames);
     const callId = `ci-${answerMode}`;
     if (messages.some(message => message.role === 'tool' && message.tool_call_id === callId)) {
       return sse([{ role: 'assistant', content: 'ci-tools-complete' }], 'stop');
@@ -104,7 +105,7 @@ try {
     calls.push(callId);
     return sse([{ role: 'assistant' }, {
       tool_calls: [{ index: 0, id: callId, type: 'function', function: {
-        name: toolName, arguments: JSON.stringify({ path: `${answerMode}.txt`, text }),
+        name: toolName, arguments: JSON.stringify({ file_path: `${answerMode}.txt`, content: text }),
       } }],
     }], 'tool_calls');
   };
@@ -121,6 +122,11 @@ try {
     return { deny: 'rejected', invalid: true, allow: 'allowed-once', cancel: 'allowed-once' }[mode];
   });
   handle = await ctx.get('agents').create({ sessionId: 'ci-official-app', meta: { cwd: services.workspace }, agentOptions: selection });
+  assert.deepEqual(ctx.get('tools').definitions().map(tool => tool.name), []);
+  assert.deepEqual(ctx.get('tools').definitions(handle.agent).map(tool => tool.name).sort(), toolNames);
+  const outside = await ctx.get('agents').create({ sessionId: 'ci-outside-workspace', meta: { cwd: stateDirectory }, agentOptions: selection });
+  try { assert.deepEqual(ctx.get('tools').definitions(outside.agent).map(tool => tool.name), []); }
+  finally { await outside.dispose(); }
   for (answerMode of ['deny', 'invalid', 'allow', 'cancel']) {
     handle.agent.followup(createUserMessage({ content: [{ type: 'text', text: `fixture ${answerMode}` }], source: { kind: 'user' } }));
     await bounded(handle.agent.whenIdle());
@@ -150,11 +156,11 @@ try {
   assert.equal(new Set(asked.map(item => item.reason)).size, 1);
   assert.ok(asked.every(item => !Object.hasOwn(item, 'displayReason')));
   assert.ok(!JSON.stringify(events).includes(apiKey));
-  await handle.dispose();
-  handle = undefined;
   await services.dispose();
   assert.ok(!ctx.get('llm').listProviders().some(provider => provider.id === selection.provider));
-  assert.ok(!ctx.get('tools').definitions().some(tool => tool.name === toolName));
+  assert.deepEqual(ctx.get('tools').definitions(handle.agent), []);
+  await handle.dispose();
+  handle = undefined;
   await ctx.fiber.dispose();
   ctx = undefined;
   assert.deepEqual(socketAttempts, []);

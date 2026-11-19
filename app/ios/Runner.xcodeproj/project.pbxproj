@@ -169,6 +169,7 @@
 				97C146EC1CF9000F007C117D /* Resources */,
 				9705A1C41CF9048500538489 /* Embed Frameworks */,
 				3B06AD1E1E4923F5004D2608 /* Thin Binary */,
+				D510C0067A688A1C00000001 /* Stage Flutter Simulator Test Fixture */,
 			);
 			buildRules = (
 			);
@@ -278,6 +279,18 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "/bin/sh \"$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh\" build";
+		};
+		D510C0067A688A1C00000001 /* Stage Flutter Simulator Test Fixture */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = ();
+			inputPaths = ();
+			name = "Stage Flutter Simulator Test Fixture";
+			outputPaths = ();
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -eu\nfixture=\"dsh-flutter-simulator-fixture\"\nsource=\"$SRCROOT/RunnerTests/$fixture\"\ndestination=\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/$fixture\"\nrm -rf \"$destination\"\nif [ \"$CONFIGURATION\" = Debug ] && [ \"$PLATFORM_NAME\" = iphonesimulator ] && [ -d \"$source\" ]; then\n  mkdir -p \"$destination\"\n  cp \"$source/flutter-simulator-entry.cjs\" \"$source/chat-ci-entry.cjs\" \"$destination/\"\nfi\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

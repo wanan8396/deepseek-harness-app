@@ -74,6 +74,7 @@ APPLY = (
 )
 TEST_APPLY = (
     ('ios_dsh_client_adapter_test.dart', 'app/test/ios/ios_dsh_client_adapter_test.dart'),
+    ('ios_historical_host_test.dart', 'app/integration_test/ios_historical_host_test.dart'),
 )
 
 
@@ -268,13 +269,11 @@ def merge_pubspec(output: Path, donor_files: dict[str, bytes]) -> list[str]:
     if not DONOR_DEPENDENCIES <= donor_deps.keys():
         raise AssemblyError('the donor dependency contract changed')
     missing = [name for name in donor_deps if name in DONOR_DEPENDENCIES and name not in have]
-    if not missing:
-        return []
     marker = '\ndev_dependencies:\n'
-    if marker not in target:
-        raise AssemblyError('pubspec has no dev_dependencies marker')
+    if target.count(marker) != 1 or '\n  integration_test:' in target:
+        raise AssemblyError('the target test dependency contract changed')
     addition = ''.join(f'{donor_deps[name]}\n' for name in missing)
-    staged_pubspec = target.replace(marker, '\n' + addition + marker, 1)
+    staged_pubspec = target.replace(marker, '\n' + addition + marker + '  integration_test:\n    sdk: flutter\n', 1)
     if '    - assets/web/\n' not in staged_pubspec:
         raise AssemblyError('the target asset declaration changed')
     staged_pubspec = staged_pubspec.replace('    - assets/web/\n',

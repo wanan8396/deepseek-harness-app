@@ -362,7 +362,7 @@ final class RunnerTests: XCTestCase {
       let request = try await event("waterfall")
       XCTAssertEqual(request["agentId"] as? String, id)
       let detail = try XCTUnwrap(request["request"] as? [String: Any])
-      XCTAssertEqual(detail["toolName"] as? String, "workspace_create_text")
+      XCTAssertEqual(detail["toolName"] as? String, "write")
       let eventId = try XCTUnwrap(request["eventId"] as? String)
       _ = try XCTUnwrap(!FileManager.default.fileExists(atPath: workspaceFile.path) ? true : nil, "File existed before approval")
       _ = try await rpc("$events/result", ["clientId": client, "eventId": eventId,

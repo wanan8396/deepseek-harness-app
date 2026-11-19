@@ -1,0 +1,165 @@
+import 'package:dsh_app/l10n/l10n.dart';
+import 'package:dsh_app/ui/chat/chat_list.dart';
+import 'package:dsh_app/ui/chat/composer.dart';
+import 'package:dsh_app/ui/chat/widgets/approval_card.dart';
+import 'package:dsh_app/ui/chat/widgets/assistant_message.dart';
+import 'package:dsh_app/ui/chat/widgets/user_bubble.dart';
+import 'package:dsh_app/ui/ios/ios_flutter_entry.dart';
+import 'package:dsh_app/ui/shell/sessions_drawer.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:integration_test/integration_test.dart';
+
+const _channel = MethodChannel('dsh/ios-local');
+const _prompt = 'official-tool-fixture';
+const _reply = 'official-tool-result';
+
+Finder _key(String key) => find.byKey(ValueKey(key));
+
+Future<void> _waitFor(WidgetTester tester, Finder finder, String phase) async {
+  final elapsed = Stopwatch()..start();
+  while (finder.evaluate().isEmpty) {
+    if (elapsed.elapsed >= const Duration(seconds: 45)) {
+      fail('Timed out waiting for $phase ($finder)');
+    }
+    await tester.pump(const Duration(milliseconds: 50));
+  }
+  expect(finder, findsOneWidget, reason: phase);
+}
+
+Future<void> _enter(WidgetTester tester, Finder field, String text) async {
+  await tester.ensureVisible(field);
+  await tester.enterText(field, text);
+  await tester.pump();
+}
+
+void main() {
+  IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+
+  testWidgets('historical Flutter chat drives the embedded official Host', (
+    tester,
+  ) async {
+    // Both methods are compiled only into the native Debug Simulator path.
+    // This enables the offline model boundary, not a fake MethodChannel,
+    // a replacement provider graph, or a direct Host RPC from the test.
+    await _channel.invokeMethod<void>('enableFlutterSimulatorFixture');
+    // Inject text through EditableText without opening the system keyboard.
+    tester.testTextInput.register();
+    addTearDown(tester.testTextInput.unregister);
+    Future<String?> fileState() =>
+        _channel.invokeMethod<String>('flutterSimulatorApprovedFileState');
+
+    // The staged main launches this same root. Let the integration binding
+    // own frame scheduling rather than running main's custom frame binding.
+    await tester.pumpWidget(const IosFlutterEntry());
+    final setup = _key('ios-flutter-setup');
+    await _waitFor(tester, setup, 'engine setup');
+    await tester.tap(_key('ios-flutter-custom-channel').hitTestable());
+    await tester.pump();
+    await _enter(
+      tester,
+      _key('ios-flutter-base-url'),
+      'https://official-ios-ci.invalid/v1',
+    );
+    await _enter(
+      tester,
+      _key('ios-flutter-api-key'),
+      'ios-prod-ci-not-a-credential',
+    );
+    await _enter(tester, _key('ios-flutter-model'), 'ios-production-fixture');
+    final connect = _key('ios-flutter-connect');
+    await tester.ensureVisible(connect);
+    await _waitFor(tester, connect.hitTestable(), 'connect control');
+    await tester.tap(connect);
+
+    final composer = find.byType(Composer);
+    final input = find.descendant(of: composer, matching: find.byType(TextField));
+    final chat = find.byType(ChatList);
+    await _waitFor(tester, input.hitTestable(), 'connected historical composer');
+    expect(setup, findsNothing);
+    expect(chat, findsNothing, reason: 'No session is created until the first send');
+    await _enter(tester, input, _prompt);
+
+    final sendLabel = appL10n.commonSend;
+    final send = find.descendant(
+      of: composer,
+      matching: find.byWidgetPredicate(
+        (widget) => widget is Semantics &&
+            widget.properties.label == sendLabel &&
+            widget.properties.enabled == true,
+        description: 'enabled Send control',
+      ),
+    ).hitTestable();
+    await _waitFor(tester, send, 'send readiness');
+    await tester.tap(send);
+    await _waitFor(tester, chat, 'new conversation after send');
+    final sessionId = tester.widget<ChatList>(chat).sessionId;
+    expect(sessionId, isNotEmpty);
+    final sent = find.byWidgetPredicate(
+      (widget) => widget is UserBubble &&
+          widget.text == _prompt &&
+          widget.pendingLabel == null,
+      description: 'Host-echoed user message',
+    );
+    await _waitFor(tester, sent, 'sent user message');
+
+    final approval = find.byType(ApprovalCard);
+    await _waitFor(tester, approval, 'official Host approval card');
+    final card = tester.widget<ApprovalCard>(approval);
+    expect(card.request.toolName, 'write');
+    expect(card.onAllowAll, isNull);
+    expect(await fileState(), 'absent', reason: 'No write before approval');
+    expect(find.text(_reply, findRichText: true), findsNothing);
+    final allowOnce = find.descendant(
+      of: approval,
+      matching: find.widgetWithText(FilledButton, appL10n.chatAllowOnce),
+    );
+    await tester.ensureVisible(allowOnce);
+    await _waitFor(tester, allowOnce.hitTestable(), 'Allow once control');
+    await tester.tap(allowOnce);
+
+    final assistant = find.byWidgetPredicate(
+      (widget) => widget is AssistantMessage &&
+          widget.item.text == _reply &&
+          !widget.item.streaming,
+      description: 'settled official assistant message',
+    );
+    final renderedReply = find.descendant(
+      of: assistant,
+      matching: find.text(_reply, findRichText: true),
+    );
+    await _waitFor(tester, renderedReply.hitTestable(), 'rendered assistant reply');
+    expect(approval, findsNothing);
+    expect(await fileState(), 'matches');
+
+    // Navigate away with the same drawer users see and reopen the exact
+    // conversation returned by the Host, not a guessed/generated title.
+    final menu = _key('chat-menu').hitTestable();
+    final row = _key('session-$sessionId').hitTestable();
+    await _waitFor(tester, menu, 'phone chat menu');
+    await tester.tap(menu);
+    await _waitFor(tester, row, 'Host session in historical drawer');
+    expect(tester.widget<SessionTile>(row).current, isTrue);
+    final newChat = find.byType(NewChatButton).hitTestable();
+    await _waitFor(tester, newChat, 'drawer New chat control');
+    await tester.tap(newChat);
+    await _waitFor(tester, menu, 'drawer dismissed on New chat');
+    expect(chat, findsNothing);
+    await tester.tap(menu);
+    await _waitFor(tester, row, 'existing session in reopened drawer');
+    expect(tester.widget<SessionTile>(row).current, isFalse);
+    await tester.tap(row);
+    await _waitFor(tester, renderedReply.hitTestable(), 'reopened Host conversation');
+    expect(tester.widget<ChatList>(chat).sessionId, sessionId);
+
+    // Require the production teardown rather than relying on process exit.
+    await _waitFor(tester, menu, 'chat menu before stopping the Host');
+    await tester.tap(menu);
+    final disconnect = _key('ios-drawer-disconnect').hitTestable();
+    await _waitFor(tester, disconnect, 'disconnect control');
+    await tester.tap(disconnect);
+    await _waitFor(tester, setup, 'setup after native stop');
+    debugPrint('IOS_FLUTTER_HOST_E2E: connect create send approve render drawer reopen stop');
+  });
+}

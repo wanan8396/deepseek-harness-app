@@ -13,7 +13,9 @@ import { SystemPrompt } from '@deepseek-ai/dsh-system-prompt';
 import { apply as applyOfficialTools } from '@deepseek-ai/dsh-tool-fs';
 import { ToolsService } from '@deepseek-ai/dsh-tools';
 import { ToolExecutionPipeline } from '@deepseek-ai/dsh-tools/pipeline';
-import { createOfficialWorkspaceFileSystem, OFFICIAL_WORKSPACE_LIMITS, OFFICIAL_WORKSPACE_PATH } from './official-workspace-fs.mjs';
+import {
+  createOfficialWorkspaceFileSystem, OFFICIAL_WORKSPACE_LIMITS, OFFICIAL_WORKSPACE_PATH, registerOfficialWorkspaceSearch,
+} from './official-workspace-fs.mjs';
 
 // CI-only: stage both .mjs files beside the full rc.3 `npm ci` seed, then run
 // this file with Node 24.22.1 on a POSIX filesystem. No AgentLoop, production
@@ -120,7 +122,8 @@ try {
   isolated.provide('workingDirectory', { ensure: async () => OFFICIAL_WORKSPACE_PATH });
   applyOfficialTools(isolated, { read: true, write: true, edit: true, readImage: false, applyPatch: false,
     readLimit: 20, readMaxLineLength: 200, readMaxBytes: 1024, readStreamMinSize: 1 });
-  assert.deepEqual(ctx.tools.definitions(scopeKey).map(item => item.name).sort(), ['edit', 'read', 'write']);
+  registerOfficialWorkspaceSearch(isolated);
+  assert.deepEqual(ctx.tools.definitions(scopeKey).map(item => item.name).sort(), ['edit', 'read', 'workspace_search', 'write']);
   assert.deepEqual(ctx.tools.definitions(), []);
   assert.equal(ctx.tools.get('write', scopeKey).parameters.properties.sandbox_permissions, undefined);
   ctx.on('tools/execute', async (exec, next) => {
@@ -173,6 +176,23 @@ try {
   for (const fn of ['lstat', 'readBytes', 'readByteRange', 'listDir', 'watch', 'patchText', 'deleteFile', 'moveFile']) {
     await assert.rejects(fs[fn](hello, noAbort, 4096), denied);
   }
+  const textSearch = await ok(call('workspace_search', { mode: 'text', query: 'repeat' }));
+  assert.deepEqual(textSearch.value, {
+    matches: [{ path: '/workspace/src/hello.txt', lines: [2, 3] }], truncated: false,
+  });
+  assert.ok(!textSearch.content[0].text.includes('repeat'));
+  assert.deepEqual(await fs.searchWorkspace(root, { mode: 'path', query: '.txt' }, noAbort).then(result => {
+    noLeaks(result);
+    return result.matches.filter(({ path }) => path.includes('link') || path.includes('outside'));
+  }), []);
+  assert.deepEqual(await fs.searchWorkspace(root, { mode: 'text', query: 'fixture-app-' }, noAbort), {
+    matches: [{ path: '/workspace/secret-join.txt', lines: [1] }], truncated: false,
+  });
+  await assert.rejects(fs.searchWorkspace(root, { mode: 'text', query: secret }, noAbort), denied);
+  await assert.rejects(fs.searchWorkspace(root, { mode: 'text', query: 'one\ntwo' }, noAbort), denied);
+  assert.deepEqual(await fs.searchWorkspace(root, { mode: 'path', query: '.*' }, noAbort), {
+    matches: [], truncated: false,
+  });
   const read = await ok(call('read', { file_path: 'src/hello.txt', offset: 2, limit: 1 }));
   assert.equal(read.value.path, '/workspace/src/hello.txt');
   assert.deepEqual(read.value.lines, [{ number: 2, text: 'repeat' }]);
@@ -261,6 +281,13 @@ try {
   approvalMode = async () => { await writeFile(join(workspace, 'concurrent.txt'), 'external create'); return true; };
   await error(call('write', { file_path: 'concurrent.txt', content: 'stale create' }), stale.code);
   assert.equal(await disk('concurrent.txt'), 'external create');
+  await mkdir(join(workspace, 'many'), { mode: 0o700 });
+  for (let i = 0; i < 30; i++) await writeFile(join(workspace, 'many', `hit-${i}.txt`), 'hit\n'.repeat(21));
+  const bounded = await ok(call('workspace_search', { mode: 'text', query: 'hit', directory: 'many' }));
+  assert.equal(bounded.value.truncated, true);
+  assert.equal(bounded.value.matches.length, 24);
+  assert.deepEqual(bounded.value.matches[0].lines, Array.from({ length: 16 }, (_, i) => i + 1));
+  await assert.rejects(fs.searchWorkspace(root, { mode: 'path', query: 'hit' }, cancelled), aborted);
   approvalMode = async () => {
     await rename(join(workspace, 'src'), join(workspace, 'old-src'));
     await symlink(temp, join(workspace, 'src'), 'dir');

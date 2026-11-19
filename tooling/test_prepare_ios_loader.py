@@ -181,6 +181,15 @@ class PrepareIOSLoaderTests(unittest.TestCase):
         with self.assertRaisesRegex(exporter.ExportError, 'RUNTIME_ENTRY_TARGET_MISSING'):
             exporter.validate_entry_targets({**manifest, 'version': '2.9.2'}, {'entry.js'})
 
+    def test_locked_diff_directory_targets_require_their_actual_indexes(self):
+        manifest = {'name': 'diff', 'version': '9.0.0', 'exports': {
+            './': {'import': './libesm/', 'require': './libcjs/'},
+        }}
+        files = {'libesm/index.js', 'libcjs/index.js'}
+        exporter.validate_entry_targets(manifest, files)
+        with self.assertRaisesRegex(exporter.ExportError, 'RUNTIME_ENTRY_TARGET_MISSING'):
+            exporter.validate_entry_targets(manifest, {'libesm/index.js', 'libcjs/helpers.js'})
+
     def test_runtime_exports_preserved_and_development_exports_not_rewritten(self):
         manifest = {'main': './lib/index.js', 'exports': {'.': {'types': './types/index.d.ts',
                     'import': './lib/index.mjs', 'require': './lib/index.cjs'}, './src/*': './src/*',

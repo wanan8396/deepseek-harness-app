@@ -34,9 +34,9 @@ OFFICIAL_HOST_ENTRY_PACKAGES = (
     '@deepseek-ai/dsh-client-file-upload', '@deepseek-ai/dsh-commands',
     '@deepseek-ai/dsh-credentials-local', '@deepseek-ai/dsh-fs-local',
     '@deepseek-ai/dsh-session-query-sqlite', '@deepseek-ai/dsh-storage-json',
-    '@deepseek-ai/dsh-typert-registry',
+    '@deepseek-ai/dsh-typert-registry', '@deepseek-ai/dsh-tool-fs', '@deepseek-ai/dsh-fs-observation-policy',
 )
-# Test-only session Host. Files are still checked for native executable content.
+# Official Host composition. Files are still checked for native executable content.
 OFFICIAL_HOST_REVIEWED_PACKAGES = frozenset(OFFICIAL_HOST_ENTRY_PACKAGES) | frozenset({
     '@babel/code-frame', '@babel/helper-validator-identifier', '@deepseek-ai/cordis-plugin-timer',
     '@deepseek-ai/dsh-agent-preset-registry', '@deepseek-ai/dsh-chunked-list',
@@ -52,6 +52,7 @@ OFFICIAL_HOST_REVIEWED_PACKAGES = frozenset(OFFICIAL_HOST_ENTRY_PACKAGES) | froz
     '@deepseek-ai/dsh-session-title', '@deepseek-ai/dsh-settings', '@deepseek-ai/dsh-shell',
     '@deepseek-ai/dsh-skill', '@deepseek-ai/dsh-subagent', '@deepseek-ai/dsh-subprocess',
     '@deepseek-ai/dsh-tool-todo', '@deepseek-ai/dsh-util-time', '@deepseek-ai/dsh-util-workspace-path',
+    '@deepseek-ai/dsh-util-code-language', 'diff',
     '@deepseek-ai/dsh-working-directory', '@js-temporal/polyfill', 'chokidar', 'js-tokens', 'jsbi',
     'mime-db', 'mime-types', 'picocolors', 'picomatch', 'readdirp', 'rrule', 'tslib', 'undici', 'ws', 'yaml',
 })
@@ -290,8 +291,13 @@ def validate_entry_targets(manifest: dict, kept: set[str]) -> list:
             pattern = re.compile('^' + re.escape(clean).replace(r'\*', '.*') + '$')
             if not any(pattern.match(filename) for filename in kept):
                 raise ExportError('RUNTIME_EXPORT_TARGET_MISSING', package=manifest.get('name'), target=target)
-        elif not any(candidate in kept for candidate in (clean, clean + '.js', clean + '.json', clean + '/index.js')):
-            raise ExportError('RUNTIME_ENTRY_TARGET_MISSING', package=manifest.get('name'), target=target)
+        else:
+            # diff's compatibility aliases use directory targets with trailing
+            # slashes. Check the actual archived index, not a doubled separator.
+            candidates = ((clean + 'index.js',) if clean.endswith('/') else
+                          (clean, clean + '.js', clean + '.json', clean + '/index.js'))
+            if not any(candidate in kept for candidate in candidates):
+                raise ExportError('RUNTIME_ENTRY_TARGET_MISSING', package=manifest.get('name'), target=target)
     return omitted
 
 
@@ -356,10 +362,10 @@ def prepare(seed: Path, destination: Path, check: bool = False, phase: str = 'lo
                  'sqlite-session-persistence.mjs'),
         'official-host-ci': ('official-host.mjs', 'official-host-ci-mailbox.mjs', 'sqlite-session-persistence.mjs',
                              'core-fixture-model.mjs', 'official-app-services.mjs', 'official-app-routes.mjs', 'chat-model-channel.mjs',
-                             'chat-deepseek-provider.mjs', 'chat-workspace-tools.mjs'),
+                             'chat-deepseek-provider.mjs', 'official-workspace-fs.mjs'),
         'official-app': ('official-host.mjs', 'official-app-services.mjs', 'official-app-routes.mjs', 'official-app-mailbox.mjs',
                          'sqlite-session-persistence.mjs', 'chat-model-channel.mjs', 'chat-deepseek-provider.mjs',
-                         'chat-workspace-tools.mjs'),
+                         'official-workspace-fs.mjs'),
     }[phase]
     own_files = [ROOT / 'runtime/ios' / name for name in own_names]
     for source in own_files:

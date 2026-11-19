@@ -317,6 +317,7 @@ jobs:
           python3 tooling/assemble_ios_flutter.py --target-root . --output "$RUNNER_TEMP/dsh-ios-flutter" \
             --vendor-manifest-sha256 "$DONOR_MANIFEST_SHA256"
           stage="$RUNNER_TEMP/dsh-ios-flutter"
+          cp "$stage/.ios-flutter-stage.json" "$RUNNER_TEMP/ios-flutter-assembly.json"
           test -f "$stage/app/lib/ui/chat/chat_screen.dart"
           test -f "$stage/app/lib/ui/shell/home_shell.dart"
           test -f "$stage/app/lib/ui/shell/sessions_drawer.dart"
@@ -357,6 +358,21 @@ jobs:
       - name: Verify the staged Simulator application carries the official Host
         working-directory: ${{ runner.temp }}/dsh-ios-flutter
         run: python3 tooling/verify_ios_build.py app/build/ios/iphonesimulator/Runner.app --simulator --output dist/ios/simulator-verification.json
+      - name: Run the historical Flutter UI against the embedded Host on iPhone Simulator
+        id: staged-e2e
+        continue-on-error: true
+        working-directory: ${{ runner.temp }}/dsh-ios-flutter/app
+        run: |
+          set -euo pipefail
+          device=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for group in d["devices"].values() for x in group if x["isAvailable"] and x["name"].startswith("iPhone")))')
+          xcrun simctl boot "$device" || true
+          xcrun simctl bootstatus "$device" -b
+          xcrun simctl uninstall "$device" app.dsh.ios || true
+          fixture="$PWD/ios/RunnerTests/dsh-flutter-simulator-fixture"
+          mkdir -p "$fixture"
+          trap 'rm -rf "$fixture"' EXIT
+          cp ios/RunnerTests/flutter-simulator-entry.cjs ../runtime/ios/chat-ci-entry.cjs "$fixture/"
+          flutter test --no-pub -d "$device" integration_test/ios_historical_host_test.dart 2>&1 | tee "$RUNNER_TEMP/ios-flutter-e2e.log"
       - name: Build the staged unsigned iPhone and iPad app
         id: staged-device-build
         working-directory: ${{ runner.temp }}/dsh-ios-flutter/app
@@ -393,28 +409,33 @@ jobs:
           (cd dist/ios && shasum -a 256 "${ipa##*/}" > "${ipa##*/}.sha256")
           grep -q 'IosFlutterEntry' app/lib/main.dart
           test -f app/lib/ui/chat/chat_screen.dart
-          printf 'stagedFlutterUi=true\nhistoricalChatWidgets=true\ntargetThemeAndStartupGif=true\nsigning=none\nsignedForDevice=false\nwebKitXCTestOnThisBuild=false\n' > dist/ios/build-info.txt
+          printf 'source=%s\nstagedFlutterUi=true\nhistoricalChatWidgets=true\ntargetThemeAndStartupGif=true\nsimulator_e2e=%s\nsigning=none\nsignedForDevice=false\n' \
+            "$GITHUB_SHA" '${{ steps.staged-e2e.outcome }}' > dist/ios/build-info.txt
       - name: Publish staged verification status
         if: always()
         run: |
           sha_file="$RUNNER_TEMP/dsh-ios-flutter/dist/ios/DeepSeek-Harness-iOS-${GITHUB_SHA:0:7}-flutter-unsigned.ipa.sha256"
           ipa_sha=none
           if [ -f "$sha_file" ]; then read -r ipa_sha _ < "$sha_file"; fi
-          printf '{"source":"%s","analyze":"%s","carrierTests":"%s","simulatorBuild":"%s","deviceBuild":"%s","ipaPackaging":"%s","ipaSha256":"%s","signedForDevice":false}\n' \
+          printf '{"source":"%s","analyze":"%s","carrierTests":"%s","simulatorBuild":"%s","simulatorE2E":"%s","deviceBuild":"%s","ipaPackaging":"%s","ipaSha256":"%s","signedForDevice":false}\n' \
             "$GITHUB_SHA" '${{ steps.analyze.outcome }}' '${{ steps.carrier-tests.outcome }}' '${{ steps.staged-build.outcome }}' \
-            '${{ steps.staged-device-build.outcome }}' '${{ steps.staged-ipa.outcome }}' "$ipa_sha" \
+            '${{ steps.staged-e2e.outcome }}' '${{ steps.staged-device-build.outcome }}' '${{ steps.staged-ipa.outcome }}' "$ipa_sha" \
             > "$RUNNER_TEMP/ios-flutter-status.json"
           cat "$RUNNER_TEMP/ios-flutter-status.json"
+      - name: Enforce the Simulator interaction gate
+        if: always() && steps.staged-e2e.outcome == 'failure'
+        run: exit 1
       - name: Preserve staging evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: ios-flutter-stage
           path: |
-            ${{ runner.temp }}/dsh-ios-flutter/.ios-flutter-stage.json
+            ${{ runner.temp }}/ios-flutter-assembly.json
             ${{ runner.temp }}/ios-flutter-analyze.log
             ${{ runner.temp }}/ios-flutter-tests.log
             ${{ runner.temp }}/ios-flutter-build.log
+            ${{ runner.temp }}/ios-flutter-e2e.log
             ${{ runner.temp }}/ios-flutter-device-build.log
             ${{ runner.temp }}/ios-flutter-status.json
             ${{ runner.temp }}/dsh-ios-flutter/dist/ios/
