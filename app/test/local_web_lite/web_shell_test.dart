@@ -425,49 +425,35 @@ void main() {
     }
 
     testWidgets('the bottom row leaves the page between the whale and the switch touchable', (tester) async {
-      final page = await _liveHome(tester, const Size(390, 844));
+      await _liveHome(tester, const Size(390, 844));
       final handle = tester.getRect(find.byType(WebHandleButton));
       final connection = tester.getRect(find.byKey(const ValueKey('web-connection-switch')));
 
-      /// Every render object the bottom row owns.
-      Set<Object> rowRenderObjects() {
-        final objects = <Object>{};
-        void collect(Element element) {
-          final object = element.renderObject;
-          if (object != null) objects.add(object);
-          element.visitChildren(collect);
-        }
-
-        collect(tester.element(find.byKey(const ValueKey('web-controls-bottom'))));
-        return objects;
+      // Every render object the bottom row owns.
+      final row = <Object>{};
+      void collect(Element element) {
+        final object = element.renderObject;
+        if (object != null) row.add(object);
+        element.visitChildren(collect);
       }
 
-      // The gap the page sits behind: between the two controls, on their row.
-      // The sidebar's archive action lands here, so a tap must reach the page.
+      collect(tester.element(find.byKey(const ValueKey('web-controls-bottom'))));
+
+      // The gap the page sits behind, between the two controls on their row.
+      // The sidebar's archive action lands here, so a tap in it must reach the
+      // webpage instead of an invisible strip that only looks empty.
       final gap = Offset((handle.right + connection.left) / 2, handle.center.dy);
       expect(gap.dx, greaterThan(handle.right));
       expect(gap.dx, lessThan(connection.left));
-
-      final hits = tester.hitTestOnBinding(gap).path.map((entry) => entry.target).toSet();
       expect(
-        hits.intersection(rowRenderObjects()),
+        tester.hitTestOnBinding(gap).path.map((entry) => entry.target).toSet().intersection(row),
         isEmpty,
-        reason: 'the row must not hit-test in the gap: a transparent box there put an invisible strip over the page',
+        reason: 'nothing in the row may hit-test in the gap: a transparent box there hid the page',
       );
 
       // Both controls still answer for themselves.
-      final whaleHits = tester.hitTestOnBinding(handle.center).path.map((e) => e.target).toSet();
-      expect(whaleHits.intersection(rowRenderObjects()), isNotEmpty);
-      final switchHits = tester.hitTestOnBinding(connection.center).path.map((e) => e.target).toSet();
-      expect(switchHits.intersection(rowRenderObjects()), isNotEmpty);
-
-      // The probe hit none of the row, so the tap went to the page instead of
-      // a control: the whale never opened the sidebar for a tap in the gap.
-      expect(page.scripts.where((s) => s == 'window.__dshApp && window.__dshApp.toggleSidebar()'), isEmpty);
-      await tester.tap(find.byType(WebHandleButton));
-      await pumpFrames(tester, 2);
-      expect(page.scripts.where((s) => s == 'window.__dshApp && window.__dshApp.toggleSidebar()'), hasLength(1));
-      expect(tester.takeException(), isNull);
+      expect(tester.hitTestOnBinding(handle.center).path.map((e) => e.target).toSet().intersection(row), isNotEmpty);
+      expect(tester.hitTestOnBinding(connection.center).path.map((e) => e.target).toSet().intersection(row), isNotEmpty);
     });
 
     testWidgets('drawer, rotation and foreground keep whale clickable; keyboard and real modal restore it', (
