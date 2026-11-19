@@ -21,6 +21,11 @@ class PreserveTest(unittest.TestCase):
                      'app/lib/ui/shell/root_gate.dart'):
             self.assertTrue(assemble.preserved(path), path)
 
+    def test_engine_lock_is_staged_but_android_is_not(self) -> None:
+        self.assertTrue(assemble.eligible('runtime/locks/dsh-x/package.json'))
+        self.assertTrue(assemble.eligible('runtime/locks/dsh-x/package-lock.json'))
+        self.assertFalse(assemble.eligible('app/android/app/build.gradle.kts'))
+
     def test_chat_and_drawer_come_from_the_donor(self) -> None:
         for path in ('app/lib/ui/chat/chat_screen.dart', 'app/lib/ui/shell/sessions_drawer.dart',
                      'app/lib/ui/shell/home_shell.dart', 'app/lib/ui/chat/widgets/whale_tail.dart'):

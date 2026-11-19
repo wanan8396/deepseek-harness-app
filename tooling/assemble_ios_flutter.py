@@ -41,7 +41,7 @@ PRESERVE = (
     'app/lib/l10n/gen/',
 )
 COPY_PREFIXES = ('app/ios/', 'app/lib/', 'app/assets/', 'app/tool/', 'packages/dsh_client/',
-                 'runtime/ios/', 'tooling/')
+                 'runtime/ios/', 'runtime/locks/', 'tooling/')
 COPY_EXACT = frozenset({'LICENSE', 'ASSETS.md', 'THIRD_PARTY_NOTICES.md', 'app/l10n.yaml',
                         'app/analysis_options.yaml', 'app/pubspec.yaml', 'app/pubspec.lock',
                         'app/test/ios/ios_official_carrier_test.dart'})

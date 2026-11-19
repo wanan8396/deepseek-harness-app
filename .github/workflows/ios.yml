@@ -287,10 +287,9 @@ jobs:
           retention-days: 7
   flutter-ui:
     needs: loader
-    name: Historical Flutter UI staging and analysis
+    name: Historical Flutter UI for iPhone and iPad
     runs-on: macos-15
-    timeout-minutes: 40
-    continue-on-error: true
+    timeout-minutes: 50
     env:
       FLUTTER_VERSION: 3.47.7
       DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
@@ -305,8 +304,14 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
+      - name: Use CocoaPods for the embedded Node framework
+        run: flutter config --no-enable-swift-package-manager
       - name: Download the pinned embedded Node framework
         run: python3 tooling/prepare_ios_runtime.py --download
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53
+        with:
+          name: ios-dsh-loader-input
+          path: ${{ runner.temp }}/ios-loader-input
       - name: Stage the historical UI over the current iOS shell
         run: |
           python3 tooling/assemble_ios_flutter.py --target-root . --output "$RUNNER_TEMP/dsh-ios-flutter" \
@@ -319,7 +324,19 @@ jobs:
           test ! -d "$stage/app/android"
           grep -q "runApp(const IosFlutterEntry())" "$stage/app/lib/main.dart"
           grep -q "import 'ui/ios/ios_flutter_entry.dart';" "$stage/app/lib/main.dart"
-          test -f "$stage/app/assets/branding/startup-cover.gif"
+          cmp app/assets/branding/startup-cover.gif "$stage/app/assets/branding/startup-cover.gif"
+          diff -qr app/lib/ui/theme "$stage/app/lib/ui/theme"
+          lock_dir=$(python3 tooling/ios_engine_pin.py lock-directory)
+          cmp "$lock_dir/package-lock.json" "$stage/$lock_dir/package-lock.json"
+      - name: Install the same tested official runtime in the historical UI
+        working-directory: ${{ runner.temp }}/dsh-ios-flutter
+        run: |
+          for phase in loader core persistence chat web-frontend web-bootstrap official-app official-web; do
+            destination="app/ios/EmbeddedNode/Resources/dsh-$phase"
+            mkdir -p "$destination"
+            tar -xzf "$RUNNER_TEMP/ios-loader-input/dsh-ios-$phase.tar.gz" -C "$destination"
+          done
+          cp runtime/ios/official-web-bridge.js app/ios/EmbeddedNode/Resources/official-web-bridge.js
       - name: Resolve staged dependencies
         working-directory: ${{ runner.temp }}/dsh-ios-flutter/app
         run: flutter pub get
@@ -329,19 +346,19 @@ jobs:
         run: flutter analyze --no-pub --no-fatal-infos 2>&1 | tee "$RUNNER_TEMP/ios-flutter-analyze.log"
       - name: Run the staged carrier tests
         id: carrier-tests
-        continue-on-error: true
         working-directory: ${{ runner.temp }}/dsh-ios-flutter/app
         run: flutter test --no-pub test/ios/ios_official_carrier_test.dart test/ios/ios_dsh_client_adapter_test.dart 2>&1 | tee "$RUNNER_TEMP/ios-flutter-tests.log"
       - name: Build the staged Simulator application
         id: staged-build
-        continue-on-error: true
         working-directory: ${{ runner.temp }}/dsh-ios-flutter/app
         run: |
           set -o pipefail
           flutter build ios --simulator --debug --no-pub --build-name 0.2.2 --build-number "$GITHUB_RUN_NUMBER" 2>&1 | tee "$RUNNER_TEMP/ios-flutter-build.log"
+      - name: Verify the staged Simulator application carries the official Host
+        working-directory: ${{ runner.temp }}/dsh-ios-flutter
+        run: python3 tooling/verify_ios_build.py app/build/ios/iphonesimulator/Runner.app --simulator --output dist/ios/simulator-verification.json
       - name: Build the staged unsigned iPhone and iPad app
         id: staged-device-build
-        continue-on-error: true
         working-directory: ${{ runner.temp }}/dsh-ios-flutter/app
         run: |
           set -o pipefail
@@ -380,10 +397,12 @@ jobs:
       - name: Publish staged verification status
         if: always()
         run: |
-          ipa_sha=$(cd "${{ runner.temp }}/dsh-ios-flutter/dist/ios" 2>/dev/null && shasum -a 256 *-flutter-unsigned.ipa 2>/dev/null | cut -d' ' -f1)
-          printf '{"analyze":"%s","carrierTests":"%s","simulatorBuild":"%s","deviceBuild":"%s","ipaSha256":"%s","historicalFlutterUi":true,"signedForDevice":false}\n' \
-            '${{ steps.analyze.outcome }}' '${{ steps.carrier-tests.outcome }}' '${{ steps.staged-build.outcome }}' \
-            '${{ steps.staged-device-build.outcome }}' "${ipa_sha:-none}" \
+          sha_file="$RUNNER_TEMP/dsh-ios-flutter/dist/ios/DeepSeek-Harness-iOS-${GITHUB_SHA:0:7}-flutter-unsigned.ipa.sha256"
+          ipa_sha=none
+          if [ -f "$sha_file" ]; then read -r ipa_sha _ < "$sha_file"; fi
+          printf '{"source":"%s","analyze":"%s","carrierTests":"%s","simulatorBuild":"%s","deviceBuild":"%s","ipaPackaging":"%s","ipaSha256":"%s","signedForDevice":false}\n' \
+            "$GITHUB_SHA" '${{ steps.analyze.outcome }}' '${{ steps.carrier-tests.outcome }}' '${{ steps.staged-build.outcome }}' \
+            '${{ steps.staged-device-build.outcome }}' '${{ steps.staged-ipa.outcome }}' "$ipa_sha" \
             > "$RUNNER_TEMP/ios-flutter-status.json"
           cat "$RUNNER_TEMP/ios-flutter-status.json"
       - name: Preserve staging evidence
