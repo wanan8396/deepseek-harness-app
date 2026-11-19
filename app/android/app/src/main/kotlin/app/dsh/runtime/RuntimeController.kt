@@ -289,7 +289,11 @@ class RuntimeController private constructor(private val app: Context) : DshProce
             try {
                 check(officialLocalWeb) { "official_runtime_required" }
                 val recoveryStarted = SystemClock.elapsedRealtime()
-                try { RootAccess.get(app).recoverBeforeGuestWrites(installer.rootfs) }
+                try {
+                    RootAccess.get(app).recoverBeforeGuestWrites(installer.rootfs) { step, ms ->
+                        log("[dsh-app] startup step: root recovery $step $ms ms", "system")
+                    }
+                }
                 finally { log("[dsh-app] startup step: root recovery gate ${SystemClock.elapsedRealtime() - recoveryStarted} ms", "system") }
                 if (officialLocalWeb) GuestDependencies.prepare(installer.rootfs)
                 if (officialLocalWeb && !safe) {

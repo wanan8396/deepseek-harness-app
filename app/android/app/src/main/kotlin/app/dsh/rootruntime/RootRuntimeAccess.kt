@@ -44,8 +44,8 @@ internal class RootRuntimeAccess(
         error = if (Files.exists(marker.toPath(), NOFOLLOW_LINKS)) "root_cleanup_pending" else null
     }
 
-    fun recoverBeforeGuestWrites(rootfs: File) {
-        if (Files.exists(marker.toPath(), NOFOLLOW_LINKS) && prepareLaunch(rootfs) == null) throw IOException("root_cleanup_blocked")
+    fun recoverBeforeGuestWrites(rootfs: File, timing: ((String, Long) -> Unit)? = null) {
+        if (Files.exists(marker.toPath(), NOFOLLOW_LINKS) && prepareLaunch(rootfs, timing) == null) throw IOException("root_cleanup_blocked")
     }
 
     fun fallback(reason: String) = synchronized(guard) {
@@ -54,7 +54,7 @@ internal class RootRuntimeAccess(
     }
 
     /** Recovery and launch share one real UID-0 probe, including a failed attempt, per start. */
-    fun prepareLaunch(rootfs: File): Candidate? {
+    fun prepareLaunch(rootfs: File, recoveryTiming: ((String, Long) -> Unit)? = null): Candidate? {
         val ticket: Long
         synchronized(guard) {
             if (mode == "root" || mode == "proot") return null
@@ -66,6 +66,10 @@ internal class RootRuntimeAccess(
             ticket = generation
         }
         var child: RootRuntimePipe? = null
+        val started = System.nanoTime()
+        fun report(stage: String, millis: Long) {
+            if (millis >= 0L) runCatching { recoveryTiming?.invoke(stage, millis) }
+        }
         try {
             child = synchronized(guard) { session?.takeIf { it.alive() } } ?: startPipe(classpath()).also { next ->
                 synchronized(guard) { if (generation != ticket) { next.close(); throw IOException("root_cancelled") }; pending = next }
@@ -74,8 +78,11 @@ internal class RootRuntimeAccess(
             if (!RootRuntimeProtocol.accepted(response)) throw IOException(response.optString("error", "root_denied"))
             val bootId = RootBootIdentity.valid(response.getString("bootId"))
             if (Files.exists(marker.toPath(), NOFOLLOW_LINKS)) {
-                child.recover(RootLaunchPlan(rootfs.canonicalPath, appUid(), appUid(), marker.absolutePath,
+                report("probe", java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started))
+                val recovery = child.recover(RootLaunchPlan(rootfs.canonicalPath, appUid(), appUid(), marker.absolutePath,
                     listOf("/usr/bin/env", "-i", "/bin/true"), "/"))
+                report("namespace retirement", recovery.optLong("retireMs", -1L))
+                report("ownership repair", recovery.optLong("repairMs", -1L))
             }
             synchronized(guard) {
                 if (ticket != generation) throw IOException("root_cancelled")

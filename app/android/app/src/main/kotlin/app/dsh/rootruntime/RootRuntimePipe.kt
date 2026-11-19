@@ -103,9 +103,10 @@ internal class RootRuntimePipe private constructor(private val process: Process)
         engineStarted = true
         return EngineProcess(this)
     }
-    fun recover(plan: RootLaunchPlan) {
+    fun recover(plan: RootLaunchPlan): JSONObject {
         val reply = exchange(plan.json().put("op", "recover"), 120_000)
         if (!reply.optBoolean("ok")) throw IOException("root_cleanup_blocked")
+        return reply
     }
 
     /** EOF asks the supervisor to retire only its namespace and finish ownership repair. */

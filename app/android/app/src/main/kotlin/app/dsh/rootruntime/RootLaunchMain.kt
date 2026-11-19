@@ -30,10 +30,10 @@ object RootLaunchMain {
                 val raw = Frames.read(System.`in`) ?: break
                 val request = RootRuntimeProtocol.json(raw)
                 val id = request.getLong("id")
-                fun reply(ok: Boolean, error: String? = null) = send(JSONObject().put("id", id).put("ok", ok)
+                fun reply(ok: Boolean, error: String? = null, details: JSONObject.() -> Unit = {}) = send(JSONObject().put("id", id).put("ok", ok)
                     .put("uid", Process.myUid()).put("revision", RootRuntimeProtocol.REVISION).put("error", error ?: JSONObject.NULL)
                     .apply { if (ok && request.optString("op") == "probe")
-                        put("bootId", RootBootIdentity.valid(java.io.File("/proc/sys/kernel/random/boot_id").readText())) })
+                        put("bootId", RootBootIdentity.valid(java.io.File("/proc/sys/kernel/random/boot_id").readText())) }.apply(details))
                 when (request.optString("op")) {
                     "probe" -> {
                         if (Process.myUid() != 0) { reply(false, "root_denied"); continue }
@@ -59,9 +59,15 @@ object RootLaunchMain {
                         if (Process.myUid() != 0 || synchronized(guard) { worker != null }) { reply(false, "root_busy"); continue }
                         try {
                             val plan = RootLaunchPlan.parse(request)
+                            val started = System.nanoTime()
                             RootOwnershipRepair.retireRecordedNamespace(plan)
+                            val retired = System.nanoTime()
                             RootOwnershipRepair.finish(plan)
-                            reply(true)
+                            val finished = System.nanoTime()
+                            reply(true) {
+                                put("retireMs", TimeUnit.NANOSECONDS.toMillis(retired - started))
+                                put("repairMs", TimeUnit.NANOSECONDS.toMillis(finished - retired))
+                            }
                         } catch (_: Exception) { reply(false, "root_cleanup_blocked") }
                     }
                     "launch" -> {

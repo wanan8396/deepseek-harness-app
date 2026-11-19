@@ -67,7 +67,11 @@ class RootRuntimeTest {
         withAccess { access, marker, trace ->
             marker.writeText("pending ownership repair")
             access.beginRuntime(1)
-            access.recoverBeforeGuestWrites(trace.parentFile)
+            val timings = linkedMapOf<String, Long>()
+            access.recoverBeforeGuestWrites(trace.parentFile) { step, ms -> timings[step] = ms }
+            assertTrue(timings.getValue("probe") >= 0L)
+            assertEquals(23L, timings.getValue("namespace retirement"))
+            assertEquals(523L, timings.getValue("ownership repair"))
             assertFalse(marker.exists())
             assertNotNull(access.prepareLaunch(trace.parentFile))
             assertEquals(listOf("probe", "recover"), trace.readLines())
@@ -147,10 +151,6 @@ class RootRuntimeTest {
         assertTrue(RootRuntimeProtocol.accepted(probe(0)))
         assertFalse(RootRuntimeProtocol.accepted(probe(2000))); assertFalse(RootRuntimeProtocol.accepted(probe("0")))
         assertFalse(RootRuntimeProtocol.accepted(probe(0, "old")))
-    }
-    @Test fun externalHardlinksDoNotQualifyForOwnershipRepair() {
-        assertTrue(RootOwnershipRepair.linksContained(2, 2)); assertFalse(RootOwnershipRepair.linksContained(1, 2))
-        assertFalse(RootOwnershipRepair.linksContained(0, 1))
     }
     @Test fun processAdapterDemultiplexesOutputAndKeepsActualExit() {
         val (pipe, child) = fake("exit")
@@ -232,6 +232,7 @@ object RootRuntimeFakeChild {
                 .apply {
                     if (mode != "missingBoot") put("bootId", if (mode == "invalidBoot") "invalid" else "11111111-2222-4333-8444-555555555555")
                     if (mode == "denied") put("error", "root_denied")
+                    if (request.getString("op") == "recover") { put("retireMs", 23L); put("repairMs", 523L) }
                 })
             if (request.getString("op") == "emit") {
                 send(JSONObject().put("event", "stdout").put("data", Base64.getEncoder().encodeToString("OUT\n".toByteArray())))

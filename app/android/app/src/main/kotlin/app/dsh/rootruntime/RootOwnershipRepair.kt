@@ -6,56 +6,19 @@ import java.io.File
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.LinkOption.NOFOLLOW_LINKS
-import java.nio.file.Path
-import java.nio.file.FileVisitResult
-import java.nio.file.SimpleFileVisitor
-import java.nio.file.attribute.BasicFileAttributes
 
 /** Runs only outside the retired mount/PID namespace. No recursive chown command or symlink walk. */
 internal object RootOwnershipRepair {
-    data class Inode(val device: Long, val inode: Long)
-    internal fun linksContained(observed: Int, total: Long) = observed.toLong() == total
-
     fun repair(rootfs: File, uid: Int, gid: Int) {
         require(uid >= 10000 && gid >= 10000)
-        val root = rootfs.toPath()
-        if (!Files.isDirectory(root, NOFOLLOW_LINKS) || Files.isSymbolicLink(root)) throw IOException("root_cleanup_path")
-        val device = Os.lstat(rootfs.absolutePath).st_dev
-        val counts = HashMap<Inode, Int>()
-        val totals = HashMap<Inode, Long>()
-        fun inspect(path: Path) = Os.lstat(path.toString()).also {
-            if (it.st_dev != device) throw IOException("root_cleanup_mount")
-        }
-        Files.walkFileTree(root, object : SimpleFileVisitor<Path>() {
-            override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult { inspect(dir); return FileVisitResult.CONTINUE }
-            override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
-                val stat = inspect(file)
-                if (stat.st_uid != uid && stat.st_nlink > 1) {
-                    val key = Inode(stat.st_dev, stat.st_ino)
-                    counts[key] = (counts[key] ?: 0) + 1
-                    val previous = totals.put(key, stat.st_nlink)
-                    if (previous != null && previous != stat.st_nlink) throw IOException("root_cleanup_changed")
-                }
-                return FileVisitResult.CONTINUE
-            }
-        })
-        for ((key, count) in counts) if (!linksContained(count, totals.getValue(key))) throw IOException("root_cleanup_hardlink")
-        fun restore(path: Path) {
-            val stat = inspect(path)
-            if (stat.st_uid == uid) return
-            if (!OsConstants.S_ISDIR(stat.st_mode) && stat.st_nlink > 1 &&
-                !linksContained(counts[Inode(stat.st_dev, stat.st_ino)] ?: 0, stat.st_nlink)) throw IOException("root_cleanup_hardlink")
+        RootRepairTree.repair(rootfs.toPath(), uid, stat = { path ->
+            val stat = Os.lstat(path.toString())
+            RootRepairTree.Entry(stat.st_dev, stat.st_ino, stat.st_uid, stat.st_nlink, stat.st_mode,
+                OsConstants.S_ISDIR(stat.st_mode), OsConstants.S_ISLNK(stat.st_mode))
+        }, restore = { path, entry ->
             Os.lchown(path.toString(), uid, gid)
-            // chown clears set-id bits; preserve the user's original mode, never chmod 777.
-            if (!OsConstants.S_ISLNK(stat.st_mode)) Os.chmod(path.toString(), stat.st_mode and 0xfff)
-        }
-        Files.walkFileTree(root, object : SimpleFileVisitor<Path>() {
-            override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult { inspect(dir); return FileVisitResult.CONTINUE }
-            override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult { restore(file); return FileVisitResult.CONTINUE }
-            override fun postVisitDirectory(dir: Path, error: IOException?): FileVisitResult {
-                if (error != null) throw error
-                restore(dir); return FileVisitResult.CONTINUE
-            }
+            // chown clears set-id bits; restore the previous mode without following symlinks.
+            if (!entry.symlink) Os.chmod(path.toString(), entry.mode and 0xfff)
         })
     }
 
