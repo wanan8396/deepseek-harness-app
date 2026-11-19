@@ -52,6 +52,7 @@ DONOR_EXACT = frozenset({'app/l10n.yaml', 'app/tool/l10n_catalog.py', 'app/tool/
 # the staged donor supplies its own independent desktop launch references.
 OMIT_TARGET = frozenset({'app/lib/ui/web/local_settings_document.dart',
                          'app/lib/ui/web/web_view_platform.dart'})
+GENERATED_INPUTS = ('app/ios/EmbeddedNode/Vendor', 'app/ios/EmbeddedNode/Resources')
 DONOR_DEPENDENCIES = frozenset({'gpt_markdown', 'val_latex_flutter', 're_highlight', 'dsh_remote',
                                'dartssh2', 'image_picker', 'file_picker', 'crypto', 'cryptography',
                                'timezone', 'yaml', 'xterm', 'http', 'html', 'pointycastle',
@@ -122,6 +123,7 @@ def preserved(path: str) -> bool:
 
 
 def copy_target(root: Path, output: Path, include_untracked: bool = False) -> list[str]:
+    target_root = root
     copied = []
     for name, mode in tracked(root, include_untracked):
         source = root / name
@@ -132,6 +134,21 @@ def copy_target(root: Path, output: Path, include_untracked: bool = False) -> li
         if os.name != 'nt':
             target.chmod(0o755 if mode == '100755' else 0o644)
         copied.append(name)
+    # Downloaded build inputs are untracked, so name them explicitly.
+    for extra in GENERATED_INPUTS:
+        source = target_root / extra
+        if not source.is_dir():
+            continue
+        for path in sorted(source.rglob('*')):
+            if path.is_symlink():
+                raise AssemblyError(f'refusing a symlinked build input: {path}')
+            if not path.is_file():
+                continue
+            name = path.relative_to(target_root).as_posix()
+            destination = output / name
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(path, destination)
+            copied.append(name)
     return copied
 
 

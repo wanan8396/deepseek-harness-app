@@ -305,6 +305,8 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
+      - name: Download the pinned embedded Node framework
+        run: python3 tooling/prepare_ios_runtime.py --download
       - name: Stage the historical UI over the current iOS shell
         run: |
           python3 tooling/assemble_ios_flutter.py --target-root . --output "$RUNNER_TEMP/dsh-ios-flutter" \
