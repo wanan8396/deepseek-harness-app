@@ -127,7 +127,11 @@ void main() {
     );
     final renderedReply = find.descendant(
       of: assistant,
-      matching: find.text(_reply, findRichText: true),
+      matching: find.byWidgetPredicate(
+        (widget) => widget is RichText &&
+            widget.text.toPlainText().contains(_reply),
+        description: 'painted assistant reply text',
+      ),
     );
     await _waitFor(tester, renderedReply.hitTestable(), 'rendered assistant reply');
     expect(approval, findsNothing);

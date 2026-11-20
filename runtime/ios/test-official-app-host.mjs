@@ -69,7 +69,7 @@ try {
     ['write', { file_path: filename, content: 'denied replacement' }, 'The Workspace change was not approved'],
     ['read', { file_path: '../outside.txt' }, 'outside the private Workspace capability'],
     ['write', { file_path: 'outside-link.txt', content: 'denied escape' }, 'outside the private Workspace capability'],
-    ['workspace_search', { mode: 'text', query: 'fixture edited' }, '"lines":[1]'],
+    ['workspace_search', { mode: 'text', query: 'edited sentinel' }, '{"matches":[{"path":"/workspace/unread.txt","lines":[1]}],"truncated":false}'],
   ].map(([name, args, contains], index) => ({ name, args, contains, id: `ci-host-${index}` }));
   // The fixture substitutes only the upstream model and answers through the
   // real App Host's approval event stream.
