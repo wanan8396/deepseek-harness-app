@@ -76,6 +76,31 @@ class RuntimePlugin :
                     if (error == null) result.success(document) else result.error(error, null, null)
                 }
             }
+            "readWebOverride" -> {
+                val bridge = call.argument<String>("bridge")
+                if (bridge == null || bridge !in WebOverrides.BRIDGES) {
+                    result.error("web_override_invalid_request", null, null)
+                } else {
+                    result.success(controller.readWebOverride(bridge))
+                }
+            }
+            "listDeletableSessions" -> result.success(controller.listDeletableSessions())
+            "deleteSession" -> {
+                val project = call.argument<String>("project")
+                val sessionId = call.argument<String>("sessionId")
+                if (project == null || sessionId == null) {
+                    result.error("session_invalid_request", null, null)
+                } else {
+                    val removed = controller.deleteSession(project, sessionId)
+                    if (removed == null) result.error("session_delete_failed", null, null)
+                    else result.success(mapOf(
+                        "project" to removed.project,
+                        "sessionId" to removed.sessionId,
+                        "bytes" to removed.bytes,
+                        "files" to removed.files,
+                    ))
+                }
+            }
             "publishDiagnostics" -> {
                 val markdown = call.argument<String>("markdown")
                 result.success(if (markdown == null || markdown.length > 256 * 1024) null else controller.publishDiagnostics(markdown))

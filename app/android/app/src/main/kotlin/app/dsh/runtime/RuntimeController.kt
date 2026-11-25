@@ -252,6 +252,27 @@ class RuntimeController private constructor(private val app: Context) : DshProce
         null
     }
 
+    /** Session directories the deletion would accept, for the page's list. */
+    fun listDeletableSessions(): Map<String, List<String>> = try {
+        if (!installer.isCurrent()) emptyMap() else SessionDeletion.list(installer.rootfs)
+    } catch (_: Exception) {
+        emptyMap()
+    }
+
+    /** Removes one Session directory; null when the runtime is absent. */
+    fun deleteSession(project: String, sessionId: String): SessionDeletion.Removed? = try {
+        if (!installer.isCurrent()) null else SessionDeletion.delete(installer.rootfs, project, sessionId)
+    } catch (_: Exception) {
+        null
+    }
+
+    /** User-written Web bridge for [bridge], or null to keep the bundled asset. */
+    fun readWebOverride(bridge: String): String? = try {
+        if (!installer.isCurrent()) null else WebOverrides.read(installer.rootfs, bridge)
+    } catch (_: Exception) {
+        null
+    }
+
     fun stop() {
         RootAccess.peek()?.stopRuntime()
         val intent = Intent(app, DshService::class.java).setAction(DshService.ACTION_STOP)

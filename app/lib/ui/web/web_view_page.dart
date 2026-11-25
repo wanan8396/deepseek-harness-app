@@ -789,6 +789,7 @@ class _WebViewPageState extends State<WebViewPage> {
               }
               if (widget.dshWeb && widget.onSession != null) {
                 unawaited(_injectStateBridge());
+              if (widget.dshWeb) unawaited(_injectSessionDelete());
               }
             },
             onWebResourceError: (error) {
@@ -828,6 +829,13 @@ class _WebViewPageState extends State<WebViewPage> {
         // Whether DSH Web's own sidebar drawer covers the page (the seat
         // marker steps aside while it does).
         if (widget.dshWeb) controller.addJavaScriptChannel('DshAppSidebar', onMessageReceived: _onSidebar),
+        if (widget.dshWeb) {
+          controller.addJavaScriptChannel(
+            'DshAppSessions',
+            onMessageReceived: (_) => unawaited(_sendDeletableSessions(controller)),
+          );
+          controller.addJavaScriptChannel('DshAppSessionDelete', onMessageReceived: _onSessionDelete);
+        }
         if (widget._watchModal) controller.addJavaScriptChannel('DshAppModal', onMessageReceived: _onModal),
         if (widget._watchModal)
           controller.addJavaScriptChannel(
@@ -865,7 +873,8 @@ class _WebViewPageState extends State<WebViewPage> {
       }
       final random = math.Random.secure();
       final nonce = base64UrlEncode(List<int>.generate(24, (_) => random.nextInt(256)));
-      final source = await rootBundle.loadString('assets/web/dsh_web_settings_document.js', cache: false);
+      final source = await _source('settings_document',
+          () => rootBundle.loadString('assets/web/dsh_web_settings_document.js', cache: false));
       if (!mounted || controller != _controller || epoch != _settingsEpoch) return;
       _settingsNonce = nonce;
       await controller.runJavaScript(source.replaceFirst('__DSH_SETTINGS_DOCUMENT_NONCE__', jsonEncode(nonce)));
@@ -975,7 +984,22 @@ class _WebViewPageState extends State<WebViewPage> {
   /// futures: a future answers in the zone that made it).
   static final _sources = <String, String>{};
 
-  static Future<String> _source(String key, Future<String> Function() load) async => _sources[key] ??= await load();
+  /// `dsh/runtime`: an override lives in the guest, so the Dart side cannot read it.
+  static const _runtime = MethodChannel('dsh/runtime');
+
+  /// A user-written `$DSH_HOME/dsh-app/web/<key>.js`, when the runtime has one.
+  /// Null on any failure: a broken override must not cost the bundled bridge.
+  static Future<String?> _override(String key) async {
+    try {
+      return await _runtime.invokeMethod<String>('readWebOverride', {'bridge': key});
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// The bundled asset stays the default; an override replaces it for this run.
+  static Future<String> _source(String key, Future<String> Function() load) async =>
+      _sources[key] ??= await _override(key) ?? await load();
 
   /// "Open this page" bridge.
   static Future<String> _openBridge() =>
@@ -1112,6 +1136,76 @@ class _WebViewPageState extends State<WebViewPage> {
   static Future<String> _stateBridge() =>
       _source('state', () => rootBundle.loadString('assets/web/dsh_web_state.js', cache: false));
 
+  /// The 「删除对话」 menu, injected after every load like the other bridges.
+  static Future<String> _sessionDeleteBridge() =>
+      _source('session_delete', () => rootBundle.loadString('assets/web/dsh_web_session_delete.js', cache: false));
+
+  Future<void> _injectSessionDelete() async {
+    final controller = _controller;
+    try {
+      final script = await _sessionDeleteBridge();
+      if (mounted && controller == _controller) await controller.runJavaScript(script);
+    } catch (_) {
+      // Without the bridge the page keeps only archiving; nothing else changes.
+    }
+  }
+
+  /// Answers the page's `DshAppSessions` request with what the shell would delete.
+  Future<void> _sendDeletableSessions(WebViewController controller) async {
+    Map<String, List<String>> projects;
+    try {
+      projects = await const MethodChannel('dsh/runtime')
+              .invokeMethod<Map<Object?, Object?>>('listDeletableSessions')
+              ?.map((key, value) => MapEntry('$key', (value as List).map((e) => '$e').toList())) ??
+          const <String, List<String>>{};
+    } catch (_) {
+      projects = const <String, List<String>>{};
+    }
+    if (!mounted || controller != _controller) return;
+    try {
+      await controller.runJavaScript(
+        'window.__dshAppSessionsList && window.__dshAppSessionsList(${jsonEncode({'projects': projects})})',
+      );
+    } catch (_) {
+      // A page that navigated away has nothing to answer.
+    }
+  }
+
+  /// One deletion, from the page's confirmation to the shell's answer.
+  Future<void> _onSessionDelete(JavaScriptMessage message) async {
+    final controller = _controller;
+    String? project;
+    String? sessionId;
+    try {
+      final value = jsonDecode(message.message);
+      if (value is Map) {
+        project = value['project'] as String?;
+        sessionId = value['sessionId'] as String?;
+      }
+    } catch (_) {
+      return;
+    }
+    if (sessionId == null) return;
+
+    Object? answer;
+    try {
+      // A shell-side refusal (unknown Session, linked path) returns null here.
+      final removed = await const MethodChannel('dsh/runtime')
+          .invokeMethod<Map<Object?, Object?>>('deleteSession', {'project': project, 'sessionId': sessionId});
+      answer = removed == null
+          ? {'ok': false, 'sessionId': sessionId, 'message': '会话没有被删除，请刷新后重试。'}
+          : {'ok': true, 'sessionId': sessionId, 'bytes': removed['bytes'], 'files': removed['files']};
+    } catch (_) {
+      answer = {'ok': false, 'sessionId': sessionId, 'message': '会话没有被删除，请刷新后重试。'};
+    }
+    if (!mounted || controller != _controller) return;
+    try {
+      await controller.runJavaScript('window.__dshAppSessionDeleted && window.__dshAppSessionDeleted(${jsonEncode(answer)})');
+    } catch (_) {
+      // The page is gone; the Session is still deleted.
+    }
+  }
+
   Future<void> _injectStateBridge() async {
     try {
       await _controller.runJavaScript(await _stateBridge());
@@ -1199,14 +1293,15 @@ class _WebViewPageState extends State<WebViewPage> {
   /// Also hands the page the app's JetBrains Mono: DSH's code font stack
   /// (`"SF Mono", "JetBrains Mono", … Courier`) finds nothing on Android
   /// until `Courier`, which Android maps to a wide typewriter face.
-  static Future<String> _phoneLayout() => _source('phone', () async {
+  static Future<String> _phoneLayout() => _source('phone_layout', () async {
     final font = await rootBundle.load('assets/fonts/JetBrainsMono-Regular.ttf');
     final fontFace =
         '@font-face{font-family:"JetBrains Mono";font-weight:400;'
         'font-style:normal;font-display:swap;'
         'src:url(data:font/ttf;base64,${base64Encode(font.buffer.asUint8List(font.offsetInBytes, font.lengthInBytes))}) format("truetype")}\n';
     final css = fontFace + await rootBundle.loadString('assets/web/dsh_web_phone.css', cache: false);
-    final js = await rootBundle.loadString('assets/web/dsh_web_phone.js', cache: false);
+    final js = await _source('phone',
+        () => rootBundle.loadString('assets/web/dsh_web_phone.js', cache: false));
     return [
       '(function () {',
       "  var s = document.getElementById('dsh-app-phone');",
