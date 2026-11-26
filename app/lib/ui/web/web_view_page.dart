@@ -990,9 +990,15 @@ class _WebViewPageState extends State<WebViewPage> {
   /// `dsh/runtime`: an override lives in the guest, so the Dart side cannot read it.
   static const _runtime = MethodChannel('dsh/runtime');
 
+  /// Whether this page may read the guest at all. A computer page talks to a
+  /// remote engine and must never reach for the phone's runtime, which is also
+  /// why its settings document is off (see [_localSettingsEnabled]).
+  bool get _guestReadable => widget.dshWeb && !widget.computerWeb;
+
   /// A user-written `$DSH_HOME/dsh-app/web/<key>.js`, when the runtime has one.
   /// Null on any failure: a broken override must not cost the bundled bridge.
-  static Future<String?> _override(String key) async {
+  Future<String?> _override(String key) async {
+    if (!_guestReadable) return null;
     try {
       return await _runtime.invokeMethod<String>('readWebOverride', {'bridge': key});
     } catch (_) {
@@ -1001,11 +1007,11 @@ class _WebViewPageState extends State<WebViewPage> {
   }
 
   /// The bundled asset stays the default; an override replaces it for this run.
-  static Future<String> _source(String key, Future<String> Function() load) async =>
+  Future<String> _source(String key, Future<String> Function() load) async =>
       _sources[key] ??= await _override(key) ?? await load();
 
   /// "Open this page" bridge.
-  static Future<String> _openBridge() =>
+  Future<String> _openBridge() =>
       _source('open', () => rootBundle.loadString('assets/web/dsh_web_open.js', cache: false));
 
   /// Whether [WebViewPage.openTarget] was handed to the page already.
@@ -1041,7 +1047,7 @@ class _WebViewPageState extends State<WebViewPage> {
   }
 
   /// Back inside the page (`assets/web/dsh_web_back.js`, [WebBack]).
-  static Future<String> _backBridgeSource() =>
+  Future<String> _backBridgeSource() =>
       _source('back', () => rootBundle.loadString('assets/web/dsh_web_back.js', cache: false));
 
   Future<void> _injectBackBridge() async {
@@ -1054,7 +1060,7 @@ class _WebViewPageState extends State<WebViewPage> {
 
   /// DSH Web's own sidebar drawer, open or folded
   /// (`assets/web/dsh_web_sidebar.js`).
-  static Future<String> _sidebarBridge() =>
+  Future<String> _sidebarBridge() =>
       _source('sidebar', () => rootBundle.loadString('assets/web/dsh_web_sidebar.js', cache: false));
 
   Future<void> _injectSidebarBridge() async {
@@ -1092,7 +1098,7 @@ class _WebViewPageState extends State<WebViewPage> {
   /// page's insets unchanged while native controls step aside.
   bool _modalOpen = false;
 
-  static Future<String> _modalBridge() =>
+  Future<String> _modalBridge() =>
       _source('modal', () => rootBundle.loadString('assets/web/dsh_web_modal.js', cache: false));
 
   Future<void> _injectModalBridge() async {
@@ -1136,11 +1142,11 @@ class _WebViewPageState extends State<WebViewPage> {
   }
 
   /// Session tracking (`assets/web/dsh_web_state.js`).
-  static Future<String> _stateBridge() =>
+  Future<String> _stateBridge() =>
       _source('state', () => rootBundle.loadString('assets/web/dsh_web_state.js', cache: false));
 
   /// The 「删除对话」 menu, injected after every load like the other bridges.
-  static Future<String> _sessionDeleteBridge() =>
+  Future<String> _sessionDeleteBridge() =>
       _source('session_delete', () => rootBundle.loadString('assets/web/dsh_web_session_delete.js', cache: false));
 
   Future<void> _injectSessionDelete() async {
@@ -1299,7 +1305,7 @@ class _WebViewPageState extends State<WebViewPage> {
   /// Also hands the page the app's JetBrains Mono: DSH's code font stack
   /// (`"SF Mono", "JetBrains Mono", … Courier`) finds nothing on Android
   /// until `Courier`, which Android maps to a wide typewriter face.
-  static Future<String> _phoneLayout() => _source('phone_layout', () async {
+  Future<String> _phoneLayout() => _source('phone_layout', () async {
     final font = await rootBundle.load('assets/fonts/JetBrainsMono-Regular.ttf');
     final fontFace =
         '@font-face{font-family:"JetBrains Mono";font-weight:400;'
