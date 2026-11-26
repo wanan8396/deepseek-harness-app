@@ -124,10 +124,9 @@
       window.alert('无法确定这个菜单属于哪个会话。请先打开该对话，再从它的菜单里删除。');
       return;
     }
-    var project = projectOf(sessionId);
-    // An unknown Session stays in the list: the shell is the authority on what
-    // exists, and a stale list must not hide the entry for a new conversation.
-    if (project === null && known) return;
+    // The shell is the authority on what exists and finds the project itself,
+    // so a stale or missing list never blocks the action here.
+    var project = projectOf(sessionId) || '';
     if (!window.confirm(confirmText(sessionId))) return;
     if (!ask(project, sessionId)) window.alert(FAILED);
   }

@@ -59,6 +59,26 @@ object SessionDeletion {
     }
 
     /**
+     * The project that currently holds [sessionId], or null when none does.
+     * A Session id is unique, so the caller does not have to know its project;
+     * the same checks [delete] applies decide which one is reported.
+     */
+    fun projectOf(rootfs: File, sessionId: String): String? {
+        if (!SESSION_ID.matches(sessionId)) return null
+        val root = sessionsRoot(rootfs)
+        if (!root.isDirectory || Files.isSymbolicLink(root.toPath())) return null
+        for (project in root.listFiles().orEmpty().sortedBy { it.name }) {
+            if (!project.isDirectory || !validProject(project.name)) continue
+            if (Files.isSymbolicLink(project.toPath())) continue
+            val target = File(project, sessionId)
+            if (!target.isDirectory || Files.isSymbolicLink(target.toPath())) continue
+            if (!target.canonicalPath.startsWith(project.canonicalPath + File.separator)) continue
+            return project.name
+        }
+        return null
+    }
+
+    /**
      * Removes exactly one Session directory and reports what went. Anything the
      * listing would not have offered is refused; a refusal changes nothing.
      */

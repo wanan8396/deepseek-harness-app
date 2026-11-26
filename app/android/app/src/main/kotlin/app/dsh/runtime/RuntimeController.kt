@@ -259,9 +259,16 @@ class RuntimeController private constructor(private val app: Context) : DshProce
         emptyMap()
     }
 
-    /** Removes one Session directory; null when the runtime is absent. */
+    /**
+     * Removes one Session directory; null when the runtime is absent. [project]
+     * may be empty: a Session id is unique, so the shell finds its project and
+     * the caller does not have to know it.
+     */
     fun deleteSession(project: String, sessionId: String): SessionDeletion.Removed? = try {
-        if (!installer.isCurrent()) null else SessionDeletion.delete(installer.rootfs, project, sessionId)
+        if (!installer.isCurrent()) null else {
+            val owner = if (project.isNotEmpty()) project else SessionDeletion.projectOf(installer.rootfs, sessionId)
+            if (owner == null) null else SessionDeletion.delete(installer.rootfs, owner, sessionId)
+        }
     } catch (_: Exception) {
         null
     }

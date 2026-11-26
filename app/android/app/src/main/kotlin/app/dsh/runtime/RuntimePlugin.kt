@@ -86,9 +86,10 @@ class RuntimePlugin :
             }
             "listDeletableSessions" -> result.success(controller.listDeletableSessions())
             "deleteSession" -> {
-                val project = call.argument<String>("project")
+                // Only the id is required: the shell resolves which project holds it.
+                val project = call.argument<String>("project").orEmpty()
                 val sessionId = call.argument<String>("sessionId")
-                if (project == null || sessionId == null) {
+                if (sessionId == null) {
                     result.error("session_invalid_request", null, null)
                 } else {
                     val removed = controller.deleteSession(project, sessionId)
