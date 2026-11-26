@@ -154,20 +154,37 @@
     }
   };
 
-  // The engine's own entry, which this sits beside. Its labels are whole
-  // phrases ("归档会话", "Archive conversation"), so match the verb, not equality.
-  var ARCHIVE = /归档|archive|アーカイブ|보관/i;
+  // The Session menu's own archive row. It must be the whole phrase: a loose
+  // /归档/ test also matches the sort menu's 「隐藏已归档」, which is a filter,
+  // not a Session action, and that is not where a deletion belongs.
+  // Both states of the same row: an active Session offers 归档会话, an archived
+  // one offers 取消归档. A deletion belongs after either.
+  var ARCHIVE = /^(归档会话|取消归档|Archive (conversation|session)|Unarchive|アーカイブ|보관)$/i;
+
+  function textOf(node) {
+    return (node.textContent || '').replace(/\s+/g, ' ').trim();
+  }
 
   function archiveItem(menu) {
     var items = menu.querySelectorAll('[role="menuitem"]');
     for (var i = 0; i < items.length; i++) {
       if (items[i].hasAttribute('data-dsh-app-delete')) continue;
-      var text = (items[i].textContent || '').trim();
-      // 取消归档 / Unarchive is a different action; leave it alone.
-      if (/取消归档|取消|unarchive|restore/i.test(text)) continue;
-      if (ARCHIVE.test(text)) return items[i];
+      if (ARCHIVE.test(textOf(items[i]))) return items[i];
     }
     return null;
+  }
+
+  // Only a Session menu offers 「复制 Session ID」/「分叉会话」; a filter or sort
+  // menu does not. Requiring one of those keeps the row out of the wrong popup.
+  var SESSION_MENU = /^(复制 Session ID|Copy Session ID|分叉会话|Fork|重命名|Rename|置顶会话|Pin)/i;
+
+  function isSessionMenu(menu) {
+    if (archiveItem(menu)) return true;
+    var items = menu.querySelectorAll('[role="menuitem"]');
+    for (var i = 0; i < items.length; i++) {
+      if (SESSION_MENU.test(textOf(items[i]))) return true;
+    }
+    return false;
   }
 
   // A trash-can outline drawn into the row's existing <svg>, so the icon keeps
@@ -230,6 +247,7 @@
       }
       var anchor = archiveItem(menu);
       if (!anchor) continue;
+      if (!isSessionMenu(menu)) continue;
       var entry = anchor.cloneNode(true);
       entry.setAttribute('data-dsh-app-delete', '');
       entry.setAttribute('data-dsh-app-menu-action', 'delete');

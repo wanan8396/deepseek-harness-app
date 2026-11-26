@@ -22,9 +22,16 @@ object SessionDeletion {
     private const val GUEST_HOME = "/root/.dsh"
     private const val SESSIONS = "sessions"
 
-    /** A UUID with dashes, or a hex digest — the two id shapes the engine writes. */
+    /**
+     * The three id shapes the engine writes as Session directories: a UUID, the
+     * same UUID behind a `session-` prefix, or a hex digest (32, 40 or 64).
+     * A wrong shape here would silently make real Sessions undeletable.
+     */
     private val SESSION_ID = Regex(
-        "^(?:[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|[0-9a-fA-F]{32,64})$",
+        "^(?:session-)?(?:" +
+            "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}" +
+            "|[0-9a-fA-F]{32}|[0-9a-fA-F]{40}|[0-9a-fA-F]{64})" +
+            ")$",
     )
 
     /** What one deletion removed. */
