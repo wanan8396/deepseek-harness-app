@@ -12,10 +12,13 @@
   if (window.__dshAppSessionDelete) { window.__dshAppSessionDelete(); return; }
 
   var CHANNEL = window.DshAppSessionDelete;
-  var CONFIRM =
-    '删除这个对话？\n\n' +
-    '会话文件会从手机上真的删掉，无法恢复。\n' +
-    '想以后还能找回，请改用「归档」。';
+  function confirmText(sessionId) {
+    return (
+      '删除这个对话？\n\n' +
+      '会话 ' + sessionId.slice(0, 8) + '… 会从手机上真的删掉，无法恢复。\n' +
+      '想以后还能找回，请改用「归档」。'
+    );
+  }
   var FAILED = '删除失败，会话没有被改动。';
   var DONE = '已删除对话';
 
@@ -30,11 +33,35 @@
     }
   }
 
+  // The menu is a portal and its rows carry no id attribute, so the Session it
+  // was opened for is read from the React tree that owns the menu node: the
+  // same `target.sessionId` the page passed when it opened the menu.
+  function fiberId(node) {
+    var key = Object.keys(node).find(function (name) {
+      return name.indexOf('__reactFiber$') === 0 || name.indexOf('__reactInternalInstance$') === 0;
+    });
+    if (!key) return null;
+    var fiber = node[key];
+    for (var depth = 0; fiber && depth < 40; depth++) {
+      var props = fiber.memoizedProps;
+      if (props) {
+        if (typeof props.sessionId === 'string') return props.sessionId;
+        if (props.target && typeof props.target.sessionId === 'string') return props.target.sessionId;
+        if (props.value && typeof props.value.sessionId === 'string') return props.value.sessionId;
+      }
+      fiber = fiber.return;
+    }
+    return null;
+  }
+
   function rowId(menu) {
-    var row = menu.closest('[data-session-id]');
-    if (row) return row.getAttribute('data-session-id');
-    var item = menu.closest('[role="menuitem"], [role="option"], li');
-    return item ? item.getAttribute('data-session-id') : null;
+    var direct = menu.closest('[data-session-id]');
+    if (direct) return direct.getAttribute('data-session-id');
+    var fromTree = fiberId(menu);
+    if (fromTree) return fromTree;
+    // Last resort: the conversation the page has open. The confirmation names
+    // it, so the person can stop a deletion aimed at the wrong one.
+    return selection();
   }
 
   // Session id -> project for everything the shell will accept, fetched once
@@ -90,13 +117,18 @@
   }
 
   function deleteFrom(menu) {
-    var sessionId = rowId(menu) || selection();
-    if (!sessionId) return;
+    var sessionId = rowId(menu);
+    if (!sessionId) {
+      // Without an id there is nothing safe to delete; say so rather than
+      // acting on a guess.
+      window.alert('无法确定这个菜单属于哪个会话。请先打开该对话，再从它的菜单里删除。');
+      return;
+    }
     var project = projectOf(sessionId);
     // An unknown Session stays in the list: the shell is the authority on what
     // exists, and a stale list must not hide the entry for a new conversation.
     if (project === null && known) return;
-    if (!window.confirm(CONFIRM)) return;
+    if (!window.confirm(confirmText(sessionId))) return;
     if (!ask(project, sessionId)) window.alert(FAILED);
   }
 
@@ -123,13 +155,18 @@
     }
   };
 
+  // The engine's own entry, which this sits beside. Its labels are whole
+  // phrases ("归档会话", "Archive conversation"), so match the verb, not equality.
+  var ARCHIVE = /归档|archive|アーカイブ|보관/i;
+
   function archiveItem(menu) {
     var items = menu.querySelectorAll('[role="menuitem"]');
     for (var i = 0; i < items.length; i++) {
       if (items[i].hasAttribute('data-dsh-app-delete')) continue;
       var text = (items[i].textContent || '').trim();
-      // 归档 / Archive — the engine's own entry, which this sits beside.
-      if (text === '归档' || text === 'Archive' || text === 'アーカイブ' || text === '보관') return items[i];
+      // 取消归档 / Unarchive is a different action; leave it alone.
+      if (/取消归档|取消|unarchive|restore/i.test(text)) continue;
+      if (ARCHIVE.test(text)) return items[i];
     }
     return null;
   }
