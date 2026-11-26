@@ -834,7 +834,10 @@ class _WebViewPageState extends State<WebViewPage> {
             'DshAppSessions',
             onMessageReceived: (_) => unawaited(_sendDeletableSessions(controller)),
           );
-          controller.addJavaScriptChannel('DshAppSessionDelete', onMessageReceived: _onSessionDelete);
+          controller.addJavaScriptChannel(
+            'DshAppSessionDelete',
+            onMessageReceived: (message) => unawaited(_onSessionDelete(message)),
+          );
         }
         if (widget._watchModal) controller.addJavaScriptChannel('DshAppModal', onMessageReceived: _onModal),
         if (widget._watchModal)
@@ -1152,14 +1155,17 @@ class _WebViewPageState extends State<WebViewPage> {
 
   /// Answers the page's `DshAppSessions` request with what the shell would delete.
   Future<void> _sendDeletableSessions(WebViewController controller) async {
-    Map<String, List<String>> projects;
+    var projects = <String, List<String>>{};
     try {
-      projects = await const MethodChannel('dsh/runtime')
-              .invokeMethod<Map<Object?, Object?>>('listDeletableSessions')
-              ?.map((key, value) => MapEntry('$key', (value as List).map((e) => '$e').toList())) ??
-          const <String, List<String>>{};
+      final raw = await _runtime.invokeMethod<Map<Object?, Object?>>('listDeletableSessions');
+      if (raw != null) {
+        for (final entry in raw.entries) {
+          final ids = entry.value;
+          projects['${entry.key}'] = ids is List ? [for (final id in ids) '$id'] : const [];
+        }
+      }
     } catch (_) {
-      projects = const <String, List<String>>{};
+      projects = <String, List<String>>{};
     }
     if (!mounted || controller != _controller) return;
     try {
@@ -1190,7 +1196,7 @@ class _WebViewPageState extends State<WebViewPage> {
     Object? answer;
     try {
       // A shell-side refusal (unknown Session, linked path) returns null here.
-      final removed = await const MethodChannel('dsh/runtime')
+      final removed = await _runtime
           .invokeMethod<Map<Object?, Object?>>('deleteSession', {'project': project, 'sessionId': sessionId});
       answer = removed == null
           ? {'ok': false, 'sessionId': sessionId, 'message': '会话没有被删除，请刷新后重试。'}
