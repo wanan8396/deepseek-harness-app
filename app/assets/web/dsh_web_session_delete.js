@@ -170,11 +170,64 @@
     return null;
   }
 
+  // A trash-can outline drawn into the row's existing <svg>, so the icon keeps
+  // the menu's size, stroke and colour inheritance.
+  function trashGlyph(svg) {
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    var ns = 'http://www.w3.org/2000/svg';
+    function el(name, attrs) {
+      var node = document.createElementNS(ns, name);
+      for (var key in attrs) node.setAttribute(key, attrs[key]);
+      return node;
+    }
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '1.6');
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
+    // Lid, body and the two inner lines.
+    svg.appendChild(el('path', { d: 'M4 7h16' }));
+    svg.appendChild(el('path', { d: 'M10 4h4a1 1 0 0 1 1 1v2H9V5a1 1 0 0 1 1-1z' }));
+    svg.appendChild(el('path', { d: 'M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12' }));
+    svg.appendChild(el('path', { d: 'M10 11v6M14 11v6' }));
+  }
+
+  // The destructive colour: the theme's error token when it defines one, so
+  // light and dark both stay legible, with a fixed red as the fallback.
+  function colourDanger(entry) {
+    var red = null;
+    try {
+      var probe = document.createElement('span');
+      probe.style.color = 'var(--dsh-color-danger, var(--color-danger, var(--error, #d92d20)))';
+      probe.style.display = 'none';
+      document.body.appendChild(probe);
+      var resolved = getComputedStyle(probe).color;
+      document.body.removeChild(probe);
+      if (resolved && resolved !== 'rgba(0, 0, 0, 0)' && resolved !== 'transparent') red = resolved;
+    } catch (e) {}
+    var target = entry.querySelectorAll('[role], span, div');
+    var nodes = [entry];
+    for (var i = 0; i < target.length; i++) nodes.push(target[i]);
+    for (var j = 0; j < nodes.length; j++) {
+      // Only leaf-ish nodes carry the label; colouring the row too is harmless.
+      nodes[j].style.color = red || '#d92d20';
+      nodes[j].setAttribute('data-dsh-app-danger', '');
+    }
+    var svgs = entry.querySelectorAll('svg');
+    for (var k = 0; k < svgs.length; k++) svgs[k].style.color = red || '#d92d20';
+  }
+
   function decorate() {
     var menus = document.querySelectorAll('[role="menu"]');
     for (var i = 0; i < menus.length; i++) {
       var menu = menus[i];
-      if (menu.querySelector('[data-dsh-app-delete]')) continue;
+      if (menu.querySelector('[data-dsh-app-delete]')) {
+        // A re-render can keep the row but drop our inline colour; re-apply.
+        var kept = menu.querySelector('[data-dsh-app-delete]');
+        if (!kept.hasAttribute('data-dsh-app-danger') || !kept.querySelector('[data-dsh-app-danger]')) colourDanger(kept);
+        continue;
+      }
       var anchor = archiveItem(menu);
       if (!anchor) continue;
       var entry = anchor.cloneNode(true);
@@ -191,9 +244,16 @@
         }
       }
       if (!replaced) entry.textContent = '删除对话';
-      // The archive icon would be wrong and misleading for a deletion.
+      // Keep the archive row's icon slot so spacing and alignment stay the
+      // menu's own; only the glyph becomes a trash can.
       var icons = entry.querySelectorAll('svg');
-      for (var k = 0; k < icons.length; k++) icons[k].remove();
+      if (icons.length) {
+        for (var k = 1; k < icons.length; k++) icons[k].remove();
+        trashGlyph(icons[0]);
+      }
+      // Deletion is destructive: label and glyph use the error colour, taken
+      // from the page's own theme variable when it has one.
+      colourDanger(entry);
       entry.addEventListener(
         'click',
         function (event) {
