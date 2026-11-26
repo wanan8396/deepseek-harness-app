@@ -789,8 +789,8 @@ class _WebViewPageState extends State<WebViewPage> {
               }
               if (widget.dshWeb && widget.onSession != null) {
                 unawaited(_injectStateBridge());
-              if (widget.dshWeb) unawaited(_injectSessionDelete());
               }
+              if (_guestReadable) unawaited(_injectSessionDelete());
             },
             onWebResourceError: (error) {
               if (kDebugMode) {
@@ -829,15 +829,15 @@ class _WebViewPageState extends State<WebViewPage> {
         // Whether DSH Web's own sidebar drawer covers the page (the seat
         // marker steps aside while it does).
         if (widget.dshWeb) controller.addJavaScriptChannel('DshAppSidebar', onMessageReceived: _onSidebar),
-        if (widget.dshWeb)
+        if (_guestReadable)
           controller.addJavaScriptChannel(
             'DshAppSessions',
             onMessageReceived: (_) => unawaited(_sendDeletableSessions(controller)),
           ),
-        if (widget.dshWeb)
+        if (_guestReadable)
           controller.addJavaScriptChannel(
             'DshAppSessionDelete',
-            onMessageReceived: (message) => unawaited(_onSessionDelete(message)),
+            onMessageReceived: (message) => unawaited(_onSessionDelete(controller, message)),
           ),
         if (widget._watchModal) controller.addJavaScriptChannel('DshAppModal', onMessageReceived: _onModal),
         if (widget._watchModal)
@@ -1152,8 +1152,20 @@ class _WebViewPageState extends State<WebViewPage> {
   Future<void> _injectSessionDelete() async {
     final controller = _controller;
     try {
+      final css = await rootBundle.loadString('assets/web/dsh_web_session_delete.css');
       final script = await _sessionDeleteBridge();
-      if (mounted && controller == _controller) await controller.runJavaScript(script);
+      if (!mounted || controller != _controller || !_guestReadable) return;
+      await controller.runJavaScript('''
+        (function () {
+          if (!document.getElementById('dsh-app-session-dialog-style')) {
+            var style = document.createElement('style');
+            style.id = 'dsh-app-session-dialog-style';
+            style.textContent = ${jsonEncode(css)};
+            document.head.appendChild(style);
+          }
+        })();
+        $script
+      ''');
     } catch (_) {
       // Without the bridge the page keeps only archiving; nothing else changes.
     }
@@ -1161,6 +1173,7 @@ class _WebViewPageState extends State<WebViewPage> {
 
   /// Answers the page's `DshAppSessions` request with what the shell would delete.
   Future<void> _sendDeletableSessions(WebViewController controller) async {
+    if (!mounted || controller != _controller || !_guestReadable) return;
     var projects = <String, List<String>>{};
     try {
       final raw = await _runtime.invokeMethod<Map<Object?, Object?>>('listDeletableSessions');
@@ -1184,8 +1197,8 @@ class _WebViewPageState extends State<WebViewPage> {
   }
 
   /// One deletion, from the page's confirmation to the shell's answer.
-  Future<void> _onSessionDelete(JavaScriptMessage message) async {
-    final controller = _controller;
+  Future<void> _onSessionDelete(WebViewController controller, JavaScriptMessage message) async {
+    if (!mounted || controller != _controller || !_guestReadable) return;
     String? project;
     String? sessionId;
     try {

@@ -1,0 +1,125 @@
+/* App-owned confirmation, independent of the optional phone layout. */
+dialog[data-dsh-app-session-dialog] {
+  --confirm-top: var(--dsh-app-safe-top, env(safe-area-inset-top, 0px));
+  --confirm-bottom: var(--dsh-app-safe-bottom, env(safe-area-inset-bottom, 0px));
+  --confirm-left: var(--dsh-app-inset-left, env(safe-area-inset-left, 0px));
+  --confirm-right: var(--dsh-app-inset-right, env(safe-area-inset-right, 0px));
+  --confirm-surface: #fff;
+  --confirm-ink: #202432;
+  --confirm-muted: #525c6e;
+  --confirm-edge: #dce1e9;
+  --confirm-danger-ink: #b42318;
+  --confirm-danger-fill: #b42318;
+  --confirm-danger-soft: #fef0ee;
+  position: fixed;
+  inset: var(--confirm-top) var(--confirm-right) var(--confirm-bottom) var(--confirm-left);
+  width: min(400px, calc(100% - var(--confirm-left) - var(--confirm-right) - 32px));
+  max-width: none;
+  max-height: calc(100vh - var(--confirm-top) - var(--confirm-bottom) - 32px);
+  max-height: calc(100dvh - var(--confirm-top) - var(--confirm-bottom) - 32px);
+  margin: auto;
+  padding: 22px;
+  box-sizing: border-box;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--dsw-alias-border-l2, var(--confirm-edge));
+  border-radius: 22px;
+  color: var(--dsw-alias-label-primary, var(--confirm-ink));
+  background: var(--dsw-alias-bg-layer-2, var(--confirm-surface));
+  box-shadow: 0 16px 54px rgba(12, 17, 29, 0.22);
+  font: 400 14px / 1.55 var(--dsw-font-family, system-ui, sans-serif);
+  text-align: start;
+  color-scheme: light;
+}
+body[data-ds-dark-theme] dialog[data-dsh-app-session-dialog] {
+  --confirm-surface: #232630;
+  --confirm-ink: #f2f4f8;
+  --confirm-muted: #b8c1d0;
+  --confirm-edge: #444957;
+  --confirm-danger-ink: #ffaaa1;
+  --confirm-danger-fill: #b83228;
+  --confirm-danger-soft: #482a30;
+  color-scheme: dark;
+}
+dialog[data-dsh-app-session-dialog]::backdrop {
+  background: rgba(12, 17, 29, 0.44);
+}
+[data-dsh-app-session-dialog] .dsh-session-dialog-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 12px;
+  border-radius: 14px;
+  color: var(--confirm-danger-ink);
+  background: var(--confirm-danger-soft);
+}
+[data-dsh-app-session-dialog] .dsh-session-dialog-icon svg {
+  width: 22px;
+  height: 22px;
+}
+[data-dsh-app-session-dialog] .dsh-session-dialog-title {
+  margin: 0 0 8px;
+  font: inherit;
+  font-weight: 650;
+  font-size: 20px;
+  line-height: 1.35;
+}
+[data-dsh-app-session-dialog] .dsh-session-dialog-target {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  margin: 0 0 6px;
+  font-weight: 600;
+}
+[data-dsh-app-session-dialog] .dsh-session-dialog-note,
+[data-dsh-app-session-dialog] .dsh-session-dialog-result {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--dsw-alias-label-secondary, var(--confirm-muted));
+}
+[data-dsh-app-session-dialog] .dsh-session-dialog-result:not(:empty) {
+  margin-top: 8px;
+}
+[data-dsh-app-session-dialog] .dsh-session-dialog-result[data-error] {
+  color: var(--confirm-danger-ink);
+}
+[data-dsh-app-session-dialog] .dsh-session-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}
+[data-dsh-app-session-dialog] button {
+  appearance: none;
+  display: inline-block;
+  flex: 1 1 104px;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--dsw-alias-border-l2, var(--confirm-edge));
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+[data-dsh-app-session-dialog] button.dsh-session-dialog-submit {
+  color: #fff;
+  border-color: transparent;
+  background: var(--confirm-danger-fill);
+}
+[data-dsh-app-session-dialog] button:not(:disabled):active {
+  opacity: 0.82;
+}
+[data-dsh-app-session-dialog] button:disabled {
+  cursor: wait;
+  opacity: 0.66;
+}
+[data-dsh-app-session-dialog] button:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: -4px;
+}

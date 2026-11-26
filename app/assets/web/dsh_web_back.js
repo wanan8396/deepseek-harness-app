@@ -112,6 +112,13 @@
   // preview only identifies the top layer. It never consumes an attempt,
   // blurs an editor or presses a button; swipes decide their direction first.
   function step(preview) {
+    // The browser's top-layer dialog is ahead of every webpage menu, even
+    // when its opener is still animating out. Back never confirms deletion.
+    var sessionDialog = document.querySelector('dialog[data-dsh-app-session-dialog][open]');
+    if (shown(sessionDialog)) {
+      if (!preview) sessionDialog.querySelector('[data-dsh-session-dismiss]').click();
+      return 'layer';
+    }
     // 1. The top dialog or menu: Escape, then its own way out. One that
     //    stays even so (a notice to acknowledge) holds what is under it,
     //    and the app takes back.

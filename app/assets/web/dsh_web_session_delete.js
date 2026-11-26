@@ -12,56 +12,61 @@
   if (window.__dshAppSessionDelete) { window.__dshAppSessionDelete(); return; }
 
   var CHANNEL = window.DshAppSessionDelete;
-  function confirmText(sessionId) {
-    return (
-      '删除这个对话？\n\n' +
-      '会话 ' + sessionId.slice(0, 8) + '… 会从手机上真的删掉，无法恢复。\n' +
-      '想以后还能找回，请改用「归档」。'
-    );
-  }
-  var FAILED = '删除失败，会话没有被改动。';
-  var DONE = '已删除对话';
+  if (!CHANNEL || window.top !== window) return;
 
-  // The Session this menu belongs to. DSH Web keeps the selection in
-  // localStorage (`dsh.sessions.current`); the row's own attributes win when
-  // a menu was opened for a Session that is not the open one.
-  function selection() {
-    try {
-      return (JSON.parse(localStorage.getItem('dsh.sessions.current') || '{}') || {}).sessionId || null;
-    } catch (e) {
-      return null;
-    }
+  var FAILED = '请刷新会话列表后重试。';
+  var ROW = '[data-row-key^="session:"], [data-session-id]';
+
+  // In rc.5 the context menu is a portal. Use the document's marked opener
+  // (also available on long press via _menuOpen) or the menu's own props. The
+  // currently selected conversation can be different, so it is never a fallback.
+  function owningRow(menu) {
+    var nested = menu.closest(ROW);
+    if (nested) return nested;
+    var candidates = Array.from(document.querySelectorAll(
+      '[data-row-key^="session:"][class*="_menuOpen"], [data-context-menu-trigger][aria-expanded="true"]',
+    )).map(function (node) { return node.closest(ROW); }).filter(Boolean);
+    return candidates.length && candidates.every(function (row) { return idOf(row) === idOf(candidates[0]); })
+      ? candidates[0] : null;
   }
 
-  // The menu is a portal and its rows carry no id attribute, so the Session it
-  // was opened for is read from the React tree that owns the menu node: the
-  // same `target.sessionId` the page passed when it opened the menu.
-  function fiberId(node) {
-    var key = Object.keys(node).find(function (name) {
+  function idOf(row) {
+    if (!row) return '';
+    var key = row.getAttribute('data-row-key') || '';
+    return row.getAttribute('data-session-id') || (key.indexOf('session:') === 0 ? key.slice(8) : '');
+  }
+
+  function menuTarget(menu) {
+    var key = Object.keys(menu).find(function (name) {
       return name.indexOf('__reactFiber$') === 0 || name.indexOf('__reactInternalInstance$') === 0;
     });
-    if (!key) return null;
-    var fiber = node[key];
-    for (var depth = 0; fiber && depth < 40; depth++) {
+    for (var depth = 0, fiber = menu[key]; fiber && depth < 40; depth++, fiber = fiber.return) {
       var props = fiber.memoizedProps;
-      if (props) {
-        if (typeof props.sessionId === 'string') return props.sessionId;
-        if (props.target && typeof props.target.sessionId === 'string') return props.target.sessionId;
-        if (props.value && typeof props.value.sessionId === 'string') return props.value.sessionId;
+      if (!props) continue;
+      var target = props.target && (props.target.value || props.target);
+      var values = [target, props.value, props];
+      for (var i = 0; i < values.length; i++) {
+        var value = values[i];
+        if (value && typeof value.sessionId === 'string' && value.sessionId) return value;
       }
-      fiber = fiber.return;
     }
     return null;
   }
 
-  function rowId(menu) {
-    var direct = menu.closest('[data-session-id]');
-    if (direct) return direct.getAttribute('data-session-id');
-    var fromTree = fiberId(menu);
-    if (fromTree) return fromTree;
-    // Last resort: the conversation the page has open. The confirmation names
-    // it, so the person can stop a deletion aimed at the wrong one.
-    return selection();
+  function sessionFor(menu) {
+    var row = owningRow(menu);
+    var target = menuTarget(menu);
+    var sessionId = target ? target.sessionId : idOf(row);
+    if (!sessionId) return null;
+    if (idOf(row) !== sessionId) {
+      row = document.querySelector('[data-row-key="' + CSS.escape('session:' + sessionId) + '"]');
+    }
+    var label = row && row.querySelector(':scope > [data-session-title], :scope > [class$="_title"]');
+    return {
+      id: sessionId,
+      title: (label && textOf(label)) || (target && typeof target.displayTitle === 'string' ? target.displayTitle.trim() : ''),
+      opener: row && (row.querySelector('[data-context-menu-trigger][aria-expanded="true"]') || row),
+    };
   }
 
   // Session id -> project for everything the shell will accept, fetched once
@@ -101,7 +106,8 @@
     if (!known) return null;
     var names = Object.keys(known);
     for (var i = 0; i < names.length; i++) {
-      if (known[names[i]].indexOf(sessionId) >= 0) return names[i];
+      var ids = known[names[i]];
+      if (Array.isArray(ids) && ids.indexOf(sessionId) >= 0) return names[i];
     }
     return null;
   }
@@ -116,42 +122,137 @@
     }
   }
 
-  function deleteFrom(menu) {
-    var sessionId = rowId(menu);
-    if (!sessionId) {
-      // Without an id there is nothing safe to delete; say so rather than
-      // acting on a guess.
-      window.alert('无法确定这个菜单属于哪个会话。请先打开该对话，再从它的菜单里删除。');
-      return;
-    }
-    // The shell is the authority on what exists and finds the project itself,
-    // so a stale or missing list never blocks the action here.
-    var project = projectOf(sessionId) || '';
-    if (!window.confirm(confirmText(sessionId))) return;
-    if (!ask(project, sessionId)) window.alert(FAILED);
+  var activeDialog = null;
+  var pendingDelete = null;
+
+  function part(parent, tag, cls, text) {
+    var node = document.createElement(tag);
+    node.className = cls;
+    if (text) node.textContent = text;
+    parent.appendChild(node);
+    return node;
   }
 
-  // Android answers here: the Session is gone, so the page reloads its list.
-  window.__dshAppSessionDeleted = function (payload) {
-    try {
-      var value = typeof payload === 'string' ? JSON.parse(payload) : payload;
-      known = null;
-      if (!value || value.ok === false) {
-        window.alert(value && value.message ? value.message : FAILED);
-        return;
-      }
-      // DSH Web reads its list from the engine; a reload is the one reliable
-      // way to drop the row, and the deleted Session is no longer selected.
-      try {
-        if (value.sessionId) {
-          var store = JSON.parse(localStorage.getItem('dsh.sessions.current') || '{}') || {};
-          if (store.sessionId === value.sessionId) localStorage.removeItem('dsh.sessions.current');
-        }
-      } catch (e) {}
-      location.reload();
-    } catch (e) {
-      location.reload();
+  function openDialog(session, message) {
+    if (activeDialog) return;
+    var dialog = document.createElement('dialog');
+    if (typeof dialog.showModal !== 'function') return;
+    dialog.setAttribute('data-dsh-app-session-dialog', '');
+    dialog.setAttribute('role', 'dialog');
+    dialog.setAttribute('aria-modal', 'true');
+    dialog.setAttribute('aria-labelledby', 'dsh-session-dialog-title');
+    dialog.setAttribute('aria-describedby', session ? 'dsh-session-dialog-target dsh-session-dialog-note' : 'dsh-session-dialog-note');
+
+    var icon = part(dialog, 'span', 'dsh-session-dialog-icon');
+    icon.setAttribute('aria-hidden', 'true');
+    var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    trashGlyph(svg);
+    icon.appendChild(svg);
+    part(dialog, 'h2', 'dsh-session-dialog-title', session ? '删除这个对话？' : '暂时无法删除对话')
+      .id = 'dsh-session-dialog-title';
+    if (session) {
+      var shortId = session.id.replace(/^session-/, '').slice(0, 8) + '…';
+      part(dialog, 'p', 'dsh-session-dialog-target', session.title || '会话 ID · ' + shortId)
+        .id = 'dsh-session-dialog-target';
     }
+    part(dialog, 'p', 'dsh-session-dialog-note', session
+      ? '此对话将从本机永久删除，无法恢复。如需保留记录，请选择「归档」。' : message)
+      .id = 'dsh-session-dialog-note';
+    var status = part(dialog, 'p', 'dsh-session-dialog-result');
+    status.setAttribute('role', 'status');
+    var actions = part(dialog, 'div', 'dsh-session-dialog-actions');
+    var dismiss = part(actions, 'button', 'dsh-session-dialog-cancel', session ? '取消' : '关闭');
+    dismiss.type = 'button';
+    dismiss.autofocus = true;
+    dismiss.setAttribute('data-dsh-session-dismiss', '');
+    function close() {
+      if (activeDialog !== dialog) return;
+      activeDialog = null;
+      dialog.close();
+      dialog.remove();
+      if (session && session.opener) requestAnimationFrame(function () {
+        if (!activeDialog && session.opener.isConnected) session.opener.focus({ preventScroll: true });
+      });
+    }
+    dismiss.addEventListener('click', close);
+    dialog.addEventListener('cancel', function (event) {
+      event.preventDefault();
+      close();
+    });
+    dialog.addEventListener('keydown', function (event) {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      close();
+    });
+    if (session) {
+      var submit = part(actions, 'button', 'dsh-session-dialog-submit', '删除对话');
+      submit.type = 'button';
+      submit.addEventListener('click', function () {
+        if (activeDialog !== dialog || pendingDelete) return;
+        pendingDelete = { id: session.id, dialog: dialog, submit: submit, dismiss: dismiss, status: status };
+        submit.disabled = true;
+        submit.textContent = '正在删除…';
+        dismiss.textContent = '关闭';
+        status.removeAttribute('data-error');
+        status.textContent = '删除请求已提交，关闭此弹窗不会取消删除。';
+        // The shell resolves the project again if the list is stale or missing.
+        if (!ask(projectOf(session.id) || '', session.id)) deleteFailed(FAILED);
+      });
+    }
+    document.body.appendChild(dialog);
+    activeDialog = dialog;
+    try {
+      dialog.showModal();
+      dismiss.focus({ preventScroll: true });
+    } catch (e) {
+      activeDialog = null;
+      dialog.remove();
+    }
+  }
+
+  function deleteFrom(menu) {
+    if (activeDialog || pendingDelete) return;
+    var session = sessionFor(menu);
+    // Close the upstream menu through its normal outside-pointer handler. The
+    // target and title are captured first because the handler unmounts the menu.
+    document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch' }));
+    openDialog(session, '未识别到这个菜单所属的会话，请重新打开该会话的菜单后再试。');
+  }
+
+  function deleteFailed(message) {
+    var request = pendingDelete;
+    pendingDelete = null;
+    if (activeDialog !== request.dialog) {
+      openDialog(null, message);
+      return;
+    }
+    request.submit.disabled = false;
+    request.submit.textContent = '删除对话';
+    request.dismiss.textContent = '取消';
+    request.status.textContent = message;
+    request.status.setAttribute('data-error', '');
+    request.dismiss.focus({ preventScroll: true });
+  }
+
+  // Reload only on a successful reply for this request, keeping any other
+  // conversation selected. An error stays in the same themed dialog.
+  window.__dshAppSessionDeleted = function (payload) {
+    if (!pendingDelete) return;
+    var value;
+    try { value = typeof payload === 'string' ? JSON.parse(payload) : payload; } catch (e) {}
+    if (value && value.sessionId && value.sessionId !== pendingDelete.id) return;
+    known = null;
+    if (!value || value.ok !== true || value.sessionId !== pendingDelete.id) {
+      deleteFailed(value && typeof value.message === 'string' ? value.message : FAILED);
+      return;
+    }
+    pendingDelete = null;
+    try {
+      var store = JSON.parse(localStorage.getItem('dsh.sessions.current') || '{}') || {};
+      if (store.sessionId === value.sessionId) localStorage.removeItem('dsh.sessions.current');
+    } catch (e) {}
+    location.reload();
   };
 
   // The Session menu's own archive row. It must be the whole phrase: a loose
@@ -277,7 +378,8 @@
         function (event) {
           event.preventDefault();
           event.stopPropagation();
-          deleteFrom(menu);
+          var owner = event.currentTarget.closest('[role="menu"]');
+          if (owner) deleteFrom(owner);
         },
         true,
       );
