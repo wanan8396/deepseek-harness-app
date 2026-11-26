@@ -124,6 +124,116 @@
 
   var activeDialog = null;
   var pendingDelete = null;
+  var sessionAdapter = null;
+  var sessionList = null;
+  var stopListProjection = null;
+  var projectingList = false;
+  var deletedIds = new Set();
+
+  // A page opened without a selected conversation has only the root binding.
+  // Project acknowledged removals through its existing observable list, with
+  // no DOM surgery or persistent tombstones. Preserve every unrelated field.
+  function projectDeletedIds() {
+    if (projectingList || !sessionList || !deletedIds.size) return;
+    var state = sessionList.getSnapshot();
+    if (!state || !Array.isArray(state.ids) || !state.byId) return;
+    var present = Array.from(deletedIds).filter(function (id) {
+      return state.ids.indexOf(id) !== -1 || Object.prototype.hasOwnProperty.call(state.byId, id);
+    });
+    if (!present.length) return;
+    var byId = Object.assign({}, state.byId);
+    var projections = Object.assign({}, state.projectionsBySession || {});
+    present.forEach(function (id) { delete byId[id]; delete projections[id]; });
+    projectingList = true;
+    try {
+      sessionList.set(Object.assign({}, state, {
+        ids: state.ids.filter(function (id) { return !deletedIds.has(id); }),
+        byId: byId, projectionsBySession: projections,
+      }));
+    } finally { projectingList = false; }
+  }
+
+  function rememberList(source) {
+    if (!source || typeof source.getSnapshot !== 'function' || typeof source.set !== 'function' ||
+        typeof source.subscribe !== 'function' || (source === sessionList && stopListProjection)) return;
+    var state = source.getSnapshot();
+    if (!state || !Array.isArray(state.ids) || !state.byId) return;
+    if (stopListProjection) stopListProjection();
+    sessionList = source;
+    stopListProjection = source.subscribe(projectDeletedIds);
+  }
+  window.addEventListener('pagehide', function () {
+    if (stopListProjection) stopListProjection();
+    stopListProjection = null;
+  });
+  window.addEventListener('pageshow', function (event) {
+    if (event.persisted && sessionList) {
+      rememberList(sessionList);
+      projectDeletedIds();
+    }
+  });
+
+  // rc.5's renderer publishes its existing scoped Cordis context through
+  // ScopeBindingContext.Provider. Reuse its Session removal notification:
+  // this updates the real observable list, not a hidden or detached DOM row.
+  // Keep a resolved service pair for a later deletion after clearMain removes
+  // the last selected scope. A new document starts with a fresh cache.
+  function resolveSessionAdapter(anchor) {
+    var nodes = [anchor, document.querySelector('[data-slot="root"]'), document.querySelector('[data-slot="main"]')];
+    for (var n = 0; n < nodes.length; n++) {
+      var node = nodes[n];
+      if (!node) continue;
+      var key = Object.keys(node).find(function (name) { return name.indexOf('__reactFiber$') === 0; });
+      for (var depth = 0, fiber = node[key]; fiber && depth < 80; depth++, fiber = fiber.return) {
+        var props = fiber.memoizedProps;
+        if (!props) continue;
+        var bindings = [props.value, props.binding];
+        for (var i = 0; i < bindings.length; i++) {
+          var binding = bindings[i];
+          if (!binding || !binding.hooks || !binding.keyedHooks || !binding.props) continue;
+          try { rememberList(binding.hooks.sessions); } catch (e) {}
+          if (!binding.ctx) continue;
+          try {
+            var sessions = binding.ctx.get('sessions');
+            var workspace = binding.ctx.get('uiWorkspace');
+            if (sessions && typeof sessions.handleSessionRemoved === 'function' &&
+                typeof sessions.retainInfo === 'function' && sessions.list &&
+                typeof sessions.list.getSnapshot === 'function' && workspace &&
+                typeof workspace.clearMain === 'function') {
+              rememberList(sessions.list);
+              sessionAdapter = { sessions: sessions, workspace: workspace };
+              return sessionAdapter;
+            }
+          } catch (e) {}
+        }
+      }
+    }
+    return sessionAdapter;
+  }
+
+  function settleDeletedSession(sessionId, adapter) {
+    try {
+      if (adapter) {
+        // Read at completion, not when the confirmation opened: the person may
+        // have selected another conversation while the native request ran.
+        var retained = adapter.sessions.retainInfo(sessionId).getSnapshot().retainedBy;
+        var current = retained && retained.mainView > 0 &&
+          adapter.workspace.mainReference && adapter.workspace.mainReference.sessionId === sessionId;
+        adapter.sessions.handleSessionRemoved(sessionId);
+        if (current) adapter.workspace.clearMain();
+      } else {
+        if (!sessionList) return false;
+        var row = sessionList.getSnapshot().byId[sessionId];
+        // A snapshot-only fallback must not leave a deleted main reference alive.
+        if (row && row.retainedBy && row.retainedBy.mainView > 0) return false;
+      }
+      deletedIds.add(sessionId);
+      projectDeletedIds();
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
 
   function part(parent, tag, cls, text) {
     var node = document.createElement(tag);
@@ -133,7 +243,7 @@
     return node;
   }
 
-  function openDialog(session, message) {
+  function openDialog(session, message, heading) {
     if (activeDialog) return;
     var dialog = document.createElement('dialog');
     if (typeof dialog.showModal !== 'function') return;
@@ -148,7 +258,7 @@
     var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     trashGlyph(svg);
     icon.appendChild(svg);
-    part(dialog, 'h2', 'dsh-session-dialog-title', session ? '删除这个对话？' : '暂时无法删除对话')
+    part(dialog, 'h2', 'dsh-session-dialog-title', heading || (session ? '删除这个对话？' : '暂时无法删除对话'))
       .id = 'dsh-session-dialog-title';
     if (session) {
       var shortId = session.id.replace(/^session-/, '').slice(0, 8) + '…';
@@ -190,7 +300,10 @@
       submit.type = 'button';
       submit.addEventListener('click', function () {
         if (activeDialog !== dialog || pendingDelete) return;
-        pendingDelete = { id: session.id, dialog: dialog, submit: submit, dismiss: dismiss, status: status };
+        pendingDelete = {
+          id: session.id, dialog: dialog, submit: submit, dismiss: dismiss, status: status,
+          adapter: session.adapter || resolveSessionAdapter(session.opener), close: close,
+        };
         submit.disabled = true;
         submit.textContent = '正在删除…';
         dismiss.textContent = '关闭';
@@ -214,6 +327,7 @@
   function deleteFrom(menu) {
     if (activeDialog || pendingDelete) return;
     var session = sessionFor(menu);
+    if (session) session.adapter = resolveSessionAdapter(menu);
     // Close the upstream menu through its normal outside-pointer handler. The
     // target and title are captured first because the handler unmounts the menu.
     document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch' }));
@@ -235,8 +349,8 @@
     request.dismiss.focus({ preventScroll: true });
   }
 
-  // Reload only on a successful reply for this request, keeping any other
-  // conversation selected. An error stays in the same themed dialog.
+  // Apply only this request's successful reply in-place. Reloading the document
+  // re-enters Flutter's startup cover and destroys unrelated page state.
   window.__dshAppSessionDeleted = function (payload) {
     if (!pendingDelete) return;
     var value;
@@ -247,12 +361,25 @@
       deleteFailed(value && typeof value.message === 'string' ? value.message : FAILED);
       return;
     }
+    var request = pendingDelete;
     pendingDelete = null;
-    try {
-      var store = JSON.parse(localStorage.getItem('dsh.sessions.current') || '{}') || {};
-      if (store.sessionId === value.sessionId) localStorage.removeItem('dsh.sessions.current');
-    } catch (e) {}
-    location.reload();
+    if (settleDeletedSession(value.sessionId, request.adapter || resolveSessionAdapter(null))) {
+      request.close();
+      return;
+    }
+    // An unfamiliar renderer still must not turn a completed deletion into a
+    // forced reload or invite another destructive attempt. Keep a close-only
+    // acknowledgement; no fake removal from the page's React-owned DOM.
+    if (activeDialog !== request.dialog) {
+      openDialog(null, '当前列表将在下次刷新时更新。', '对话已删除');
+    } else {
+      request.dialog.querySelector('.dsh-session-dialog-title').textContent = '对话已删除';
+      request.dialog.querySelector('.dsh-session-dialog-note').textContent = '当前列表将在下次刷新时更新。';
+      request.status.textContent = '';
+      request.submit.remove();
+      request.dismiss.textContent = '关闭';
+      request.dismiss.focus({ preventScroll: true });
+    }
   };
 
   // The Session menu's own archive row. It must be the whole phrase: a loose
@@ -393,6 +520,7 @@
     queued = true;
     requestAnimationFrame(function () {
       queued = false;
+      if (!sessionAdapter || !sessionList) resolveSessionAdapter(null);
       decorate();
       load();
     });

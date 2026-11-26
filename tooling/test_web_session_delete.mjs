@@ -13,7 +13,7 @@ const selected = 'session-01234567-1234-4321-abcd-0123456789ab';
 const target = 'session-89abcdef-1234-4321-abcd-0123456789ab';
 const title = '明确显示的目标标题 <b>不是 HTML</b>';
 
-function fixture(t, { resolve = 'row', withBridge = true, menuLabel = '归档会话', throws = false } = {}) {
+function fixture(t, { resolve = 'row', withBridge = true, menuLabel = '归档会话', throws = false, adapterMode = null, currentId = selected } = {}) {
   const errors = [];
   const virtualConsole = new VirtualConsole();
   virtualConsole.on('jsdomError', (err) => errors.push(err));
@@ -42,6 +42,36 @@ function fixture(t, { resolve = 'row', withBridge = true, menuLabel = '归档会
   if (resolve === 'fiber-only') {
     opener.parentElement.remove();
     menu.__reactFiber$fixture = { memoizedProps: { target: { sessionId: target, displayTitle: title } } };
+  }
+  const removed = [], listeners = new Set();
+  let clears = 0, writes = 0;
+  let snapshot = {
+    ids: [selected, target],
+    byId: Object.fromEntries([selected, target].map(id => [id, { id, retainedBy: id === currentId ? { mainView: 1 } : {} }])),
+    projectionsBySession: { [selected]: { keep: true }, [target]: { drop: true } }, phase: 'ready',
+  };
+  const store = {
+    getSnapshot: () => snapshot,
+    set(value) { assert.ok(++writes < 25, 'projection should settle, not loop'); snapshot = value; [...listeners].forEach(fn => fn()); },
+    subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); },
+  };
+  const workspace = { mainReference: currentId ? { sessionId: currentId } : undefined,
+    clearMain() { clears++; this.mainReference = undefined; } };
+  const sessions = { list: store,
+    retainInfo: id => ({ getSnapshot: () => ({ retainedBy: workspace.mainReference?.sessionId === id ? { mainView: 1 } : {} }) }),
+    handleSessionRemoved(id) {
+      removed.push(id);
+      const byId = { ...snapshot.byId }; delete byId[id];
+      store.set({ ...snapshot, ids: snapshot.ids.filter(key => key !== id), byId });
+    },
+  };
+  if (adapterMode) {
+    const scope = { memoizedProps: { value: { hooks: { sessions: store }, keyedHooks: {}, props: {},
+      ...(adapterMode === 'scoped' ? { ctx: { get: key => ({ sessions, uiWorkspace: workspace })[key] } } : {}),
+    } } };
+    let fiber = menu.__reactFiber$fixture;
+    if (!fiber) menu.__reactFiber$fixture = scope;
+    else { while (fiber.return) fiber = fiber.return; fiber.return = scope; }
   }
   if (withBridge) w.DshAppSessionDelete = { postMessage(message) {
     if (throws) throw Error('unavailable');
@@ -73,7 +103,8 @@ function fixture(t, { resolve = 'row', withBridge = true, menuLabel = '归档会
   w.eval(script);
   w.eval(script);
   flush();
-  return { w, d, opener, selectedKey, sent, errors, flush,
+  return { w, d, opener, selectedKey, sent, errors, flush, store, workspace, removed, listeners,
+    get clears() { return clears; },
     get outside() { return outside; },
     get dialog() { return d.querySelector('dialog[open]'); },
     get submit() { return d.querySelector('.dsh-session-dialog-submit'); },
@@ -174,4 +205,65 @@ test('a broken bridge displays an inline error instead of a system alert', (t) =
 test('a page without the Android deletion channel does not gain the destructive menu', (t) => {
   const h = fixture(t, { withBridge: false });
   assert.equal(h.d.querySelector('[data-dsh-app-delete]'), null);
+});
+
+for (const currentId of [target, selected]) {
+  test(`success updates the observable list without reloading (current=${currentId === target ? 'target' : 'other'})`, (t) => {
+    const h = fixture(t, { adapterMode: 'scoped', currentId });
+    h.open(); h.submit.click();
+    h.w.__dshAppSessionDeleted({ ok: true, sessionId: target });
+    assert.deepEqual(h.removed, [target]);
+    assert.equal(h.clears, currentId === target ? 1 : 0);
+    assert.equal(h.workspace.mainReference?.sessionId, currentId === target ? undefined : selected);
+    assert.equal(h.store.getSnapshot().byId[target], undefined);
+    assert.deepEqual(Array.from(h.store.getSnapshot().ids), [selected]);
+    assert.equal(h.dialog, null);
+    assert.deepEqual(h.errors, []); // jsdom reports any location.reload() here.
+  });
+}
+
+test('navigation while deleting is not replaced by a stale selection', (t) => {
+  const h = fixture(t, { adapterMode: 'scoped', currentId: target });
+  h.open(); h.submit.click();
+  h.workspace.mainReference = { sessionId: selected };
+  h.w.__dshAppSessionDeleted({ ok: true, sessionId: target });
+  assert.equal(h.clears, 0);
+  assert.equal(h.workspace.mainReference.sessionId, selected);
+  assert.deepEqual(h.errors, []);
+});
+
+test('root-only projection excludes only acknowledged IDs and does not notify forever', (t) => {
+  const h = fixture(t, { adapterMode: 'root', currentId: null });
+  h.open();
+  const before = h.store.getSnapshot();
+  h.w.__dshAppSessionDeleted({ ok: true, sessionId: target }); // unsolicited: ignored
+  assert.equal(h.store.getSnapshot(), before);
+  h.submit.click();
+  h.w.__dshAppSessionDeleted({ ok: true, sessionId: target });
+  assert.equal(h.dialog, null);
+  assert.equal(h.store.getSnapshot().byId[target], undefined);
+  assert.equal(h.store.getSnapshot().byId[selected], before.byId[selected]);
+  assert.equal(h.store.getSnapshot().projectionsBySession[selected], before.projectionsBySession[selected]);
+  h.store.set(before); // A subsequent upstream metadata publication.
+  assert.deepEqual(Array.from(h.store.getSnapshot().ids), [selected]);
+  assert.equal(h.store.getSnapshot().byId[target], undefined);
+  assert.equal(h.clears, 0);
+  assert.equal(h.listeners.size, 1);
+  h.w.dispatchEvent(new h.w.PageTransitionEvent('pagehide', { persisted: true }));
+  assert.equal(h.listeners.size, 0);
+  h.store.set(before);
+  h.w.dispatchEvent(new h.w.PageTransitionEvent('pageshow', { persisted: true }));
+  assert.equal(h.listeners.size, 1);
+  assert.equal(h.store.getSnapshot().byId[target], undefined);
+  assert.deepEqual(h.errors, []);
+});
+
+test('an unfamiliar renderer acknowledges success without offering delete again or reloading', (t) => {
+  const h = fixture(t);
+  h.open(); h.submit.click();
+  h.w.__dshAppSessionDeleted({ ok: true, sessionId: target });
+  assert.match(h.dialog.textContent, /对话已删除/);
+  assert.equal(h.submit, null);
+  assert.equal(h.dismiss.textContent, '关闭');
+  assert.deepEqual(h.errors, []);
 });
