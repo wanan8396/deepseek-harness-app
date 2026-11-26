@@ -8,7 +8,7 @@ import java.nio.file.LinkOption
 /**
  * User-editable Web bridges, read from the guest's `$DSH_HOME/dsh-app/web/`.
  *
- * The shell ships `assets/web/*.js`; a file of the same name in this directory
+ * The shell ships the bridges under assets/web; a file of the same name here
  * replaces it, so a bridge can change without rebuilding the APK. Only the
  * bridge names the app already knows are readable, the file must be a regular
  * file, and both the directory and the file must stay inside the guest home.
