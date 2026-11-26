@@ -829,16 +829,16 @@ class _WebViewPageState extends State<WebViewPage> {
         // Whether DSH Web's own sidebar drawer covers the page (the seat
         // marker steps aside while it does).
         if (widget.dshWeb) controller.addJavaScriptChannel('DshAppSidebar', onMessageReceived: _onSidebar),
-        if (widget.dshWeb) {
+        if (widget.dshWeb)
           controller.addJavaScriptChannel(
             'DshAppSessions',
             onMessageReceived: (_) => unawaited(_sendDeletableSessions(controller)),
-          );
+          ),
+        if (widget.dshWeb)
           controller.addJavaScriptChannel(
             'DshAppSessionDelete',
             onMessageReceived: (message) => unawaited(_onSessionDelete(message)),
-          );
-        }
+          ),
         if (widget._watchModal) controller.addJavaScriptChannel('DshAppModal', onMessageReceived: _onModal),
         if (widget._watchModal)
           controller.addJavaScriptChannel(
